@@ -161,6 +161,7 @@ function TestButton({
 }
 
 function Dashboard({ authToken }: { authToken?: string }) {
+  // Use fallback data while API is loading/failing
   const { data: config, refetch } = useQuery({
     queryKey: ['config'],
     queryFn: async (): Promise<SceneConfig> => {
@@ -168,6 +169,8 @@ function Dashboard({ authToken }: { authToken?: string }) {
       return response.data
     },
     refetchInterval: 5000, // Refetch every 5 seconds
+    retry: false,
+    initialData: { stripe: 1, calendar: 2, youtube: 3 }, // Fallback data
   })
 
   // Fetch color patterns for preview
@@ -177,6 +180,14 @@ function Dashboard({ authToken }: { authToken?: string }) {
       const response = await axios.get(`${API_BASE}/color-patterns`)
       return response.data
     },
+    retry: false,
+    initialData: { 
+      patterns: {
+        '1': { r: 0, g: 255, b: 0 },   // Green for payments
+        '2': { r: 0, g: 0, b: 255 },   // Blue for calendar
+        '3': { r: 255, g: 0, b: 0 }    // Red for YouTube
+      }
+    }, // Fallback data
   })
 
   const mutation = useMutation({

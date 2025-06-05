@@ -48,7 +48,7 @@ interface ColorPattern {
 }
 
 interface SettingsProps {
-  authToken: string
+  authToken?: string
 }
 
 export function Settings({ authToken }: SettingsProps) {
@@ -57,9 +57,9 @@ export function Settings({ authToken }: SettingsProps) {
   const [isTestingLight, setIsTestingLight] = useState(false)
   const queryClient = useQueryClient()
 
-  const axiosConfig = {
+  const axiosConfig = authToken ? {
     headers: { Authorization: `Bearer ${authToken}` }
-  }
+  } : {}
 
   // Fetch available devices
   const { data: devicesData, isLoading: devicesLoading } = useQuery({
@@ -68,6 +68,8 @@ export function Settings({ authToken }: SettingsProps) {
       const response = await axios.get(`${API_BASE}/devices`, axiosConfig)
       return response.data
     },
+    retry: false,
+    initialData: { devices: [] },
   })
 
   // Fetch current device config
@@ -77,6 +79,8 @@ export function Settings({ authToken }: SettingsProps) {
       const response = await axios.get(`${API_BASE}/config/device`, axiosConfig)
       return response.data
     },
+    retry: false,
+    initialData: { device_id: "1A:67:F3:96:2E:A2:43:DF", model: "H70B1", name: "Curtain Lights" },
   })
 
   // Fetch color patterns
@@ -85,6 +89,14 @@ export function Settings({ authToken }: SettingsProps) {
     queryFn: async (): Promise<{ patterns: Record<string, ColorPattern> }> => {
       const response = await axios.get(`${API_BASE}/color-patterns`, axiosConfig)
       return response.data
+    },
+    retry: false,
+    initialData: { 
+      patterns: {
+        '1': { r: 0, g: 255, b: 0 },   // Green for payments
+        '2': { r: 0, g: 0, b: 255 },   // Blue for calendar
+        '3': { r: 255, g: 0, b: 0 }    // Red for YouTube
+      }
     },
   })
 
@@ -95,6 +107,8 @@ export function Settings({ authToken }: SettingsProps) {
       const response = await axios.get(`${API_BASE}/config/scene`, axiosConfig)
       return response.data
     },
+    retry: false,
+    initialData: { stripe: 1, calendar: 2, youtube: 3 },
   })
 
   // Fetch OAuth status
@@ -104,6 +118,8 @@ export function Settings({ authToken }: SettingsProps) {
       const response = await axios.get(`${API_BASE}/oauth/status`, axiosConfig)
       return response.data
     },
+    retry: false,
+    initialData: { google: { connected: false }, stripe: { connected: false } },
   })
 
   // Update device config mutation
