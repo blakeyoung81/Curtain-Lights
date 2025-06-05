@@ -39,16 +39,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Create directories for storing images if they don't exist
+# This needs to happen BEFORE mounting the static directory
+os.makedirs("static", exist_ok=True)
+os.makedirs("static/images/payment", exist_ok=True)
+os.makedirs("static/images/youtube", exist_ok=True)
+
 # Mount static files for serving uploaded images
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Load environment variables
 stripe.api_key = os.getenv("STRIPE_SK")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-
-# Create directories for storing images
-os.makedirs("static/images/payment", exist_ok=True)
-os.makedirs("static/images/youtube", exist_ok=True)
 
 # Global variable to track monitoring task
 youtube_monitoring_task = None
