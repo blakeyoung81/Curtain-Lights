@@ -913,8 +913,8 @@ async def test_subscriber_milestone(milestone: int = 1000):
         
         # Trigger celebration
         await payment_interrupt_manager.trigger_payment_celebration(
-            amount=celebration_amount,
-            payment_type=f"test_milestone_{milestone}"
+            payment_amount=celebration_amount,
+            payment_source=f"test_milestone_{milestone}"
         )
         
         return {
