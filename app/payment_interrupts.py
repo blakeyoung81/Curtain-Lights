@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 import json
-from .govee import set_color, test_device_connection, get_devices
+from .govee import set_color, test_device_connection, get_devices, play_celebration_with_text
 
 class PaymentInterruptManager:
     def __init__(self):
@@ -44,9 +44,9 @@ class PaymentInterruptManager:
             "pattern": celebration_pattern
         }
         
-        # Run celebration for specified duration
+        # Run the new celebration sequence (5s custom + amount display)
         self.interrupt_task = asyncio.create_task(
-            self._run_celebration(celebration_pattern)
+            self._run_new_celebration(payment_amount)
         )
         
         return {
@@ -113,8 +113,30 @@ class PaymentInterruptManager:
             print(f"⚠️ Could not save current state: {e}")
             self.original_state = None
     
+    async def _run_new_celebration(self, payment_amount: float):
+        """Run the new celebration sequence: 5s custom image + amount display"""
+        try:
+            print(f"💰 Starting payment celebration for ${payment_amount}")
+            
+            # Use the new celebration system
+            await play_celebration_with_text("payment", amount=payment_amount)
+            
+            print(f"✅ Payment celebration complete for ${payment_amount}")
+            
+            # Restore original state
+            await self._restore_original_state()
+            
+        except asyncio.CancelledError:
+            print("🛑 Payment celebration interrupted")
+            await self._restore_original_state()
+        except Exception as e:
+            print(f"❌ Error during payment celebration: {e}")
+            await self._restore_original_state()
+        finally:
+            self.current_interrupt = None
+
     async def _run_celebration(self, celebration_pattern: Dict):
-        """Run the celebration light pattern"""
+        """Legacy celebration method - fallback if needed"""
         try:
             duration = celebration_pattern["duration"]
             patterns = celebration_pattern["patterns"]

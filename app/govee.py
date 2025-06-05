@@ -1,4 +1,6 @@
 import os
+import json
+import time
 import requests
 import asyncio
 from datetime import datetime, timedelta
@@ -315,4 +317,229 @@ async def display_color_grid(color_grid: list) -> bool:
         
     except Exception as e:
         print(f"Error displaying color grid: {e}")
-        return False 
+        return False
+
+async def play_celebration_with_text(celebration_type: str, amount: float = None, subscriber_count: int = None):
+    """
+    Play celebration sequence:
+    1. Show custom image/GIF for 5 seconds
+    2. Then display the amount or subscriber count
+    """
+    try:
+        print(f"🎉 Starting celebration sequence for {celebration_type}")
+        
+        # Step 1: Play custom celebration for 5 seconds
+        celebration_success = await play_custom_celebration(celebration_type, duration=5)
+        
+        if not celebration_success:
+            print(f"⚠️ Custom celebration failed, using fallback")
+            await fallback_celebration(celebration_type, 5)
+        
+        # Step 2: Display the amount or count
+        if amount is not None:
+            await display_amount_text(amount)
+        elif subscriber_count is not None:
+            await display_subscriber_count_text(subscriber_count)
+        
+        print(f"✅ Celebration sequence complete for {celebration_type}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error in celebration sequence: {e}")
+        return False
+
+async def play_custom_celebration(celebration_type: str, duration: int = 5):
+    """Play custom uploaded image/GIF for specified duration"""
+    try:
+        config_path = "static/images/config.json"
+        if not os.path.exists(config_path):
+            return False
+            
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            
+        if celebration_type not in config:
+            return False
+            
+        image_config = config[celebration_type]
+        
+        if image_config.get("is_animated", False):
+            # Play animated GIF
+            return await play_animated_frames(image_config, duration)
+        else:
+            # Display static image
+            return await display_static_image(image_config, duration)
+            
+    except Exception as e:
+        print(f"❌ Error playing custom celebration: {e}")
+        return False
+
+async def play_animated_frames(image_config: dict, duration: int):
+    """Play animated GIF frames for specified duration"""
+    try:
+        animation_path = image_config.get("animation_path")
+        if not animation_path or not os.path.exists(animation_path):
+            return False
+            
+        with open(animation_path, 'r') as f:
+            animation_data = json.load(f)
+            
+        frames = animation_data.get("frames", [])
+        if not frames:
+            return False
+            
+        print(f"🎬 Playing {len(frames)}-frame animation for {duration}s")
+        
+        start_time = time.time()
+        frame_index = 0
+        
+        while time.time() - start_time < duration:
+            frame_data = frames[frame_index]
+            frame_duration = frame_data.get("duration_ms", 100) / 1000.0
+            
+            await display_color_grid(frame_data["colors"])
+            
+            remaining_time = duration - (time.time() - start_time)
+            wait_time = min(frame_duration, remaining_time)
+            
+            if wait_time > 0:
+                await asyncio.sleep(wait_time)
+            
+            frame_index = (frame_index + 1) % len(frames)
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error playing animated frames: {e}")
+        return False
+
+async def display_static_image(image_config: dict, duration: int):
+    """Display static image for specified duration"""
+    try:
+        grid_path = image_config.get("grid_path")
+        if not grid_path or not os.path.exists(grid_path):
+            return False
+            
+        with open(grid_path, 'r') as f:
+            color_grid = json.load(f)
+            
+        print(f"🖼️ Displaying static image for {duration}s")
+        
+        await display_color_grid(color_grid)
+        await asyncio.sleep(duration)
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error displaying static image: {e}")
+        return False
+
+async def display_amount_text(amount: float):
+    """Display dollar amount as green text/pattern"""
+    try:
+        print(f"💰 Displaying amount: ${amount}")
+        
+        # Flash green multiple times based on amount tier
+        if amount >= 100:
+            flashes = 5  # Premium
+        elif amount >= 50:
+            flashes = 4  # Major
+        elif amount >= 20:
+            flashes = 3  # Standard
+        else:
+            flashes = 2  # Mini
+        
+        for i in range(flashes):
+            await set_color(0, 255, 0)  # Bright green
+            await asyncio.sleep(0.5)
+            await test_device_connection("turn", "off")
+            if i < flashes - 1:  # Don't wait after last flash
+                await asyncio.sleep(0.3)
+        
+        print(f"✅ Amount display complete: ${amount} ({flashes} flashes)")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error displaying amount: {e}")
+        return False
+
+async def display_subscriber_count_text(count: int):
+    """Display subscriber count as red text/pattern"""
+    try:
+        print(f"📺 Displaying subscriber count: {count}")
+        
+        # Flash red based on subscriber count
+        if count >= 10:
+            flashes = 5
+        elif count >= 5:
+            flashes = 4
+        elif count >= 3:
+            flashes = 3
+        else:
+            flashes = max(1, count)  # At least 1 flash, max equal to count for small numbers
+        
+        for i in range(flashes):
+            await set_color(255, 0, 0)  # Bright red
+            await asyncio.sleep(0.4)
+            await test_device_connection("turn", "off")
+            if i < flashes - 1:
+                await asyncio.sleep(0.2)
+        
+        print(f"✅ Subscriber count display complete: {count} ({flashes} flashes)")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error displaying subscriber count: {e}")
+        return False
+
+async def fallback_celebration(celebration_type: str, duration: int):
+    """Fallback celebration if custom image fails"""
+    try:
+        if celebration_type == "payment":
+            # Green celebration for payments
+            await green_celebration(duration)
+        elif celebration_type == "youtube":
+            # Red celebration for YouTube
+            await red_youtube_celebration(duration)
+        else:
+            # Default rainbow
+            await rainbow_celebration(duration)
+            
+    except Exception as e:
+        print(f"❌ Error in fallback celebration: {e}")
+
+async def green_celebration(duration: int = 5):
+    """Simple green celebration for payments"""
+    try:
+        await set_color(0, 255, 0)  # Bright green
+        await asyncio.sleep(duration)
+        await test_device_connection("turn", "off")
+        return True
+    except Exception as e:
+        print(f"❌ Error in green celebration: {e}")
+        return False
+
+async def rainbow_celebration(duration: int = 5):
+    """Simple rainbow celebration"""
+    try:
+        colors = [
+            (255, 0, 0),    # Red
+            (255, 127, 0),  # Orange
+            (255, 255, 0),  # Yellow
+            (0, 255, 0),    # Green
+            (0, 0, 255),    # Blue
+            (75, 0, 130),   # Indigo
+            (148, 0, 211)   # Violet
+        ]
+        
+        time_per_color = duration / len(colors)
+        
+        for r, g, b in colors:
+            await set_color(r, g, b)
+            await asyncio.sleep(time_per_color)
+        
+        await test_device_connection("turn", "off")
+        return True
+    except Exception as e:
+        print(f"❌ Error in rainbow celebration: {e}")
+        return False

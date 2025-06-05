@@ -19,7 +19,7 @@ from pathlib import Path
 # Load environment variables
 load_dotenv()
 
-from .govee import set_scene, get_devices, test_device_connection, set_color, red_youtube_celebration
+from .govee import set_scene, get_devices, test_device_connection, set_color, red_youtube_celebration, play_celebration_with_text
 from .auth import auth_manager, get_current_user, get_google_oauth_url, get_stripe_oauth_url
 from .oauth_integrations import google_oauth, google_calendar, youtube_service, stripe_oauth
 from .payment_interrupts import payment_interrupt_manager
@@ -123,7 +123,7 @@ class TestLightRequest(BaseModel):
     value: Optional[Any] = None
 
 class ImageConfig(BaseModel):
-    celebration_type: str  # "payment_mini", "payment_standard", "payment_major", "payment_premium", "youtube_subscriber", "youtube_milestone"
+    celebration_type: str  # "payment", "youtube"
     image_path: str
 
 # Image processing functions
@@ -283,10 +283,7 @@ async def upload_celebration_image(
     """
     
     # Validate celebration type
-    valid_types = [
-        "payment_mini", "payment_standard", "payment_major", "payment_premium",
-        "youtube_subscriber", "youtube_milestone"
-    ]
+    valid_types = ["payment", "youtube"]
     
     if celebration_type not in valid_types:
         raise HTTPException(status_code=400, detail=f"Invalid celebration type. Must be one of: {valid_types}")
@@ -311,10 +308,7 @@ async def upload_celebration_image(
             base_filename = f"{celebration_type}_{timestamp}"
             
             # Determine directory based on type
-            if celebration_type.startswith("payment"):
-                directory = "static/images/payment"
-            else:
-                directory = "static/images/youtube"
+            directory = f"static/images/{celebration_type}"
             
             # Save first frame as preview image
             preview_path = os.path.join(directory, f"{base_filename}_preview.png")
@@ -382,11 +376,8 @@ async def upload_celebration_image(
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"{celebration_type}_{timestamp}.png"
             
-            # Determine directory based on type
-            if celebration_type.startswith("payment"):
-                directory = "static/images/payment"
-            else:
-                directory = "static/images/youtube"
+            # Determine directory based on type  
+            directory = f"static/images/{celebration_type}"
             
             file_path = os.path.join(directory, filename)
             
@@ -940,17 +931,14 @@ async def check_new_youtube_subscribers(
     try:
         subscriber_check = await youtube_monitor.check_for_new_subscribers(channel_id)
         
-        # If there are new subscribers, trigger red light celebrations
+        # If there are new subscribers, trigger YouTube celebration
         if subscriber_check.get("has_new_subscribers"):
             new_count = subscriber_check["new_subscribers"]
             
-            # Trigger red celebration for each new subscriber
-            for i in range(min(new_count, 5)):  # Max 5 celebrations to avoid spam
-                await red_youtube_celebration(duration=3)
-                if i < min(new_count, 5) - 1:  # Don't wait after the last one
-                    await asyncio.sleep(1)  # Brief pause between celebrations
+            # Use the new celebration system
+            await play_celebration_with_text("youtube", subscriber_count=new_count)
             
-            print(f"🔴 Triggered {min(new_count, 5)} red celebrations for {new_count} new subscribers!")
+            print(f"📺 Triggered YouTube celebration for {new_count} new subscribers!")
             
         return subscriber_check
     except Exception as e:
@@ -960,19 +948,14 @@ async def check_new_youtube_subscribers(
 async def test_red_youtube_celebration(
     new_subscribers: int = 1
 ):
-    """Test red YouTube subscriber celebration"""
+    """Test YouTube subscriber celebration"""
     try:
-        # Trigger red celebration for specified number of new subscribers
-        celebrations = min(new_subscribers, 5)  # Max 5 to avoid spam
-        
-        for i in range(celebrations):
-            await red_youtube_celebration(duration=3)
-            if i < celebrations - 1:  # Don't wait after the last one
-                await asyncio.sleep(1)  # Brief pause between celebrations
+        # Use the new celebration system
+        await play_celebration_with_text("youtube", subscriber_count=new_subscribers)
         
         return {
-            "message": f"Triggered {celebrations} red YouTube celebrations for {new_subscribers} new subscribers",
-            "celebrations_triggered": celebrations,
+            "message": f"Triggered YouTube celebration for {new_subscribers} new subscribers",
+            "celebration_type": "youtube_custom_with_count",
             "new_subscribers": new_subscribers
         }
     except Exception as e:
@@ -1123,7 +1106,7 @@ async def comprehensive_status_check():
         
         try:
             # Check if directories exist
-            payment_dir = "static/images/payment"
+            payment_dir = "static/images/payment" 
             youtube_dir = "static/images/youtube"
             config_file = "static/images/config.json"
             
@@ -1198,74 +1181,34 @@ async def debug_env():
     }
 
 @app.post("/test/animated-celebration")
-async def test_animated_celebration(celebration_type: str = "payment_standard"):
-    """Test animated celebration for a specific type"""
+async def test_animated_celebration(celebration_type: str = "payment", amount: float = 25.0, subscriber_count: int = 1):
+    """Test the new celebration system with custom images + text display"""
     try:
-        from .govee import play_animated_celebration, display_color_grid, test_device_connection
-        
-        # Load image configuration
-        config_path = "static/images/config.json"
-        if not os.path.exists(config_path):
-            raise HTTPException(status_code=404, detail="No celebration images configured")
-        
-        with open(config_path, 'r') as f:
-            config = json.load(f)
-        
-        if celebration_type not in config:
-            raise HTTPException(status_code=404, detail=f"No image configured for {celebration_type}")
-        
-        celebration_config = config[celebration_type]
-        
-        if celebration_config.get("is_animated", False):
-            # Play animated celebration
-            animation_path = celebration_config.get("animation_path")
-            if not animation_path:
-                raise HTTPException(status_code=400, detail="Animation path not found")
-            
-            success = await play_animated_celebration(animation_path, repeat_count=1)
-            
-            if success:
-                return {
-                    "status": "success",
-                    "message": f"Animated celebration played for {celebration_type}",
-                    "celebration_type": celebration_type,
-                    "file_type": "animated_gif",
-                    "frame_count": celebration_config.get("frame_count", 0),
-                    "duration": f"{celebration_config.get('total_duration_ms', 0)}ms"
-                }
-            else:
-                raise HTTPException(status_code=500, detail="Failed to play animated celebration")
-        
+        if celebration_type == "payment":
+            await play_celebration_with_text("payment", amount=amount)
+            return {
+                "status": "success",
+                "message": f"Payment celebration completed for ${amount}",
+                "celebration_type": "payment",
+                "amount": amount,
+                "sequence": "5s custom image/GIF + amount display"
+            }
+        elif celebration_type == "youtube":
+            await play_celebration_with_text("youtube", subscriber_count=subscriber_count)
+            return {
+                "status": "success",
+                "message": f"YouTube celebration completed for {subscriber_count} subscribers",
+                "celebration_type": "youtube", 
+                "subscriber_count": subscriber_count,
+                "sequence": "5s custom image/GIF + subscriber count display"
+            }
         else:
-            # Play static image celebration
-            grid_path = celebration_config.get("grid_path")
-            if grid_path and os.path.exists(grid_path):
-                with open(grid_path, 'r') as f:
-                    color_grid = json.load(f)
-                
-                success = await display_color_grid(color_grid)
-                await asyncio.sleep(3)  # Display for 3 seconds
-                
-                # Turn off lights
-                await test_device_connection("turn", "off")
-                
-                if success:
-                    return {
-                        "status": "success",
-                        "message": f"Static image celebration played for {celebration_type}",
-                        "celebration_type": celebration_type,
-                        "file_type": "static_image",
-                        "duration": "3000ms"
-                    }
-                else:
-                    raise HTTPException(status_code=500, detail="Failed to display static celebration")
-            else:
-                raise HTTPException(status_code=404, detail="Color grid file not found")
+            raise HTTPException(status_code=400, detail="celebration_type must be 'payment' or 'youtube'")
         
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error testing animated celebration: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error testing celebration: {str(e)}")
 
 # Serve frontend static files (for production)
 if os.path.exists("frontend/dist"):
