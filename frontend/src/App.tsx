@@ -1,517 +1,228 @@
-import { useState, useEffect } from 'react'
-import { QueryClient, QueryClientProvider, useQuery, useMutation } from '@tanstack/react-query'
-import axios from 'axios'
-import { toast, Toaster } from 'sonner'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { DollarSign, Calendar, Youtube, Lightbulb, Settings as SettingsIcon, Home, LogOut, User, RefreshCw } from 'lucide-react'
-import { Settings } from '@/components/Settings'
-import { Auth } from './components/Auth'
+import React, { useState } from 'react'
 
-const queryClient = new QueryClient()
+// Get the API URL from environment or use default
+const API_BASE = import.meta.env.VITE_API_URL || 'https://curtain-lights.onrender.com'
 
-interface SceneConfig {
-  stripe: number
-  calendar: number
-  youtube: number
-}
+function App() {
+  const [loading, setLoading] = useState<string | null>(null)
+  const [results, setResults] = useState<Record<string, any>>({})
 
-interface ColorPattern {
-  r: number
-  g: number
-  b: number
-}
-
-const API_BASE = import.meta.env.VITE_API_URL || '/api'
-
-function SceneCard({ 
-  type, 
-  icon: Icon, 
-  title, 
-  description, 
-  currentValue, 
-  accentColor,
-  colorPreview,
-  onSave 
-}: {
-  type: keyof SceneConfig
-  icon: any
-  title: string
-  description: string
-  currentValue: number
-  accentColor: string
-  colorPreview?: string
-  onSave: (value: number) => void
-}) {
-  const [value, setValue] = useState(currentValue.toString())
-
-  useEffect(() => {
-    setValue(currentValue.toString())
-  }, [currentValue])
-
-  const handleSave = () => {
-    const numValue = parseInt(value, 10)
-    if (!isNaN(numValue) && numValue >= 0) {
-      onSave(numValue)
-    }
-  }
-
-  return (
-    <Card className="w-full max-w-sm">
-      <CardHeader className="pb-3">
-        <div className="flex items-center gap-2">
-          <div className={`p-2 rounded-lg ${accentColor}`}>
-            <Icon className="h-4 w-4 text-white" />
-          </div>
-          <div className="flex-1">
-            <CardTitle className="text-lg">{title}</CardTitle>
-            <CardDescription>{description}</CardDescription>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Current:</span>
-          <Badge variant="secondary">Scene {currentValue}</Badge>
-          {colorPreview && (
-            <div
-              className="w-4 h-4 rounded border"
-              style={{ backgroundColor: colorPreview }}
-              title="Light color for this scene"
-            />
-          )}
-        </div>
-        <div className="flex gap-2">
-          <Input
-            type="number"
-            min="0"
-            max="10"
-            placeholder="Scene ID"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            className="flex-1"
-          />
-          <Button onClick={handleSave} size="sm">
-            Save
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function TestButton({ 
-  title, 
-  description, 
-  color, 
-  endpoint 
-}: {
-  title: string
-  description: string
-  color: string
-  endpoint: string
-}) {
-  const [isLoading, setIsLoading] = useState(false)
-
-  const handleTest = async () => {
-    setIsLoading(true)
-    // Clear previous toasts for this button to avoid clutter if user clicks multiple times
-    toast.dismiss(title) // Use a unique ID, like the title, if you want to dismiss specific toasts
-
+  const handleTest = async (testType: string, endpoint: string, buttonText: string) => {
+    setLoading(testType)
     try {
-      console.log(`Attempting to trigger endpoint: ${API_BASE}${endpoint} for test: ${title}`);
-      const response = await axios.post(`${API_BASE}${endpoint}`); // Direct API call
+      console.log(`Testing ${buttonText} via ${API_BASE}${endpoint}`)
       
-      toast.success(`${title} triggered! 🎉 Your lights should flash now!`, { id: title });
-      console.log(`Test API Success Response for ${title}:`, response.data);
-
-    } catch (error: any) {
-      console.error(`Test API Error for ${title}:`, error);
-      let errorMessage = `Test for ${title} failed. See browser console for details.`;
-
-      if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
-        console.error('Error data:', error.response.data);
-        console.error('Error status:', error.response.status);
-        console.error('Error headers:', error.response.headers);
-        errorMessage = `Test for ${title} failed: Server responded with ${error.response.status}. ${error.response.data?.detail || ''}`;
-      } else if (error.request) {
-        // The request was made but no response was received
-        console.error('Error request:', error.request);
-        errorMessage = `Test for ${title} failed: No response from server. Check Vite proxy and network.`;
-      } else {
-        // Something happened in setting up the request that triggered an Error
-        console.error('Error message:', error.message);
-        errorMessage = `Test for ${title} failed: ${error.message}`;
-      }
-      toast.error(errorMessage, { id: title });
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  return (
-    <Card className="w-full">
-      <CardContent className="p-6">
-        <div className="text-center space-y-4">
-          <div className={`w-12 h-12 rounded-full ${color} mx-auto flex items-center justify-center`}>
-            <Lightbulb className="h-6 w-6 text-white" />
-          </div>
-          <div>
-            <h3 className="font-semibold">{title}</h3>
-            <p className="text-sm text-muted-foreground">{description}</p>
-          </div>
-          <Button 
-            onClick={handleTest} 
-            disabled={isLoading}
-            className="w-full"
-          >
-            {isLoading ? (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Testing...
-              </>
-            ) : (
-              'Test Now'
-            )}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function Dashboard({ authToken }: { authToken?: string }) {
-  // Use fallback data while API is loading/failing
-  const { data: config, refetch } = useQuery({
-    queryKey: ['config'],
-    queryFn: async (): Promise<SceneConfig> => {
-      const response = await axios.get(`${API_BASE}/config/scene`)
-      return response.data
-    },
-    refetchInterval: 5000, // Refetch every 5 seconds
-    retry: false,
-    initialData: { stripe: 1, calendar: 2, youtube: 3 }, // Fallback data
-  })
-
-  // Fetch color patterns for preview
-  const { data: colorPatterns } = useQuery({
-    queryKey: ['colorPatterns'],
-    queryFn: async (): Promise<{ patterns: Record<string, ColorPattern> }> => {
-      const response = await axios.get(`${API_BASE}/color-patterns`)
-      return response.data
-    },
-    retry: false,
-    initialData: { 
-      patterns: {
-        '1': { r: 0, g: 255, b: 0 },   // Green for payments
-        '2': { r: 0, g: 0, b: 255 },   // Blue for calendar
-        '3': { r: 255, g: 0, b: 0 }    // Red for YouTube
-      }
-    }, // Fallback data
-  })
-
-  const mutation = useMutation({
-    mutationFn: async (newConfig: SceneConfig) => {
-      const response = await axios.put(`${API_BASE}/config/scene`, newConfig)
-      return response.data
-    },
-    onSuccess: () => {
-      toast.success('Scene configuration saved! ✨')
-      refetch()
-    },
-    onError: () => {
-      toast.error('Failed to save configuration')
-    },
-  })
-
-  const handleSave = (type: keyof SceneConfig, value: number) => {
-    if (config) {
-      mutation.mutate({
-        ...config,
-        [type]: value
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const result = await response.json()
+      console.log(`${buttonText} Success:`, result)
+      
+      setResults(prev => ({
+        ...prev,
+        [testType]: { success: true, data: result, timestamp: new Date() }
+      }))
+      
+    } catch (error) {
+      console.error(`${buttonText} Error:`, error)
+      setResults(prev => ({
+        ...prev,
+        [testType]: { success: false, error: error.message, timestamp: new Date() }
+      }))
+    } finally {
+      setLoading(null)
     }
   }
 
-  const rgbToHex = (r: number, g: number, b: number) => {
-    return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`
-  }
-
-  const getColorPreview = (sceneId: number) => {
-    if (!colorPatterns?.patterns) return undefined
-    const pattern = colorPatterns.patterns[sceneId.toString()]
-    return pattern ? rgbToHex(pattern.r, pattern.g, pattern.b) : undefined
-  }
-
-  if (!config) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <Lightbulb className="h-8 w-8 mx-auto mb-4 animate-pulse" />
-          <p className="text-muted-foreground">Loading configuration...</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-muted/20">
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Lightbulb className="h-8 w-8" />
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
-              Gotham Lights
-            </h1>
-          </div>
-          <p className="text-lg text-muted-foreground max-w-md mx-auto">
-            Configure your curtain light colors for different triggers
+    <div style={{ 
+      minHeight: '100vh', 
+      backgroundColor: '#0f172a',
+      color: 'white',
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      padding: '2rem'
+    }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto', textAlign: 'center' }}>
+        
+        {/* Header */}
+        <div style={{ marginBottom: '3rem' }}>
+          <h1 style={{ 
+            fontSize: '3rem', 
+            fontWeight: 'bold', 
+            marginBottom: '1rem',
+            background: 'linear-gradient(to right, #60a5fa, #34d399)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent'
+          }}>
+            💡 Curtain Lights
+          </h1>
+          <p style={{ fontSize: '1.2rem', color: '#94a3b8' }}>
+            Test your Govee DIY scenes
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-          <SceneCard
-            type="stripe"
-            icon={DollarSign}
-            title="Stripe Payments"
-            description="Successful payments & checkouts"
-            currentValue={config.stripe}
-            accentColor="bg-green-500"
-            colorPreview={getColorPreview(config.stripe)}
-            onSave={(value) => handleSave('stripe', value)}
-          />
+        {/* Test Buttons */}
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', 
+          gap: '2rem',
+          marginBottom: '3rem'
+        }}>
           
-          <SceneCard
-            type="calendar"
-            icon={Calendar}
-            title="Calendar Events"
-            description="Events starting ≤ 10 minutes"
-            currentValue={config.calendar}
-            accentColor="bg-blue-500"
-            colorPreview={getColorPreview(config.calendar)}
-            onSave={(value) => handleSave('calendar', value)}
-          />
-          
-          <SceneCard
-            type="youtube"
-            icon={Youtube}
-            title="YouTube Subscribers"
-            description="New channel subscribers"
-            currentValue={config.youtube}
-            accentColor="bg-red-500"
-            colorPreview={getColorPreview(config.youtube)}
-            onSave={(value) => handleSave('youtube', value)}
-          />
+          {/* Payment Test */}
+          <div style={{
+            backgroundColor: '#1e293b',
+            padding: '2rem',
+            borderRadius: '1rem',
+            border: '1px solid #334155'
+          }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>💰</div>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Payment Test</h3>
+            <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>
+              Triggers Money DIY scene
+            </p>
+            <button
+              onClick={() => handleTest('payment', '/test/payment', 'Payment Test')}
+              disabled={loading === 'payment'}
+              style={{
+                backgroundColor: loading === 'payment' ? '#4b5563' : '#10b981',
+                color: 'white',
+                border: 'none',
+                padding: '0.75rem 1.5rem',
+                borderRadius: '0.5rem',
+                fontSize: '1rem',
+                fontWeight: '600',
+                cursor: loading === 'payment' ? 'not-allowed' : 'pointer',
+                width: '100%'
+              }}
+            >
+              {loading === 'payment' ? 'Testing...' : 'Test Now'}
+            </button>
+          </div>
+
+          {/* Subscriber Test */}
+          <div style={{
+            backgroundColor: '#1e293b',
+            padding: '2rem',
+            borderRadius: '1rem',
+            border: '1px solid #334155'
+          }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎯</div>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Subscriber Test</h3>
+            <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>
+              Triggers YouTube DIY scene
+            </p>
+            <button
+              onClick={() => handleTest('subscriber', '/test/subscriber-milestone', 'Subscriber Test')}
+              disabled={loading === 'subscriber'}
+              style={{
+                backgroundColor: loading === 'subscriber' ? '#4b5563' : '#ef4444',
+                color: 'white',
+                border: 'none',
+                padding: '0.75rem 1.5rem',
+                borderRadius: '0.5rem',
+                fontSize: '1rem',
+                fontWeight: '600',
+                cursor: loading === 'subscriber' ? 'not-allowed' : 'pointer',
+                width: '100%'
+              }}
+            >
+              {loading === 'subscriber' ? 'Testing...' : 'Test Now'}
+            </button>
+          </div>
+
+          {/* Goal Test */}
+          <div style={{
+            backgroundColor: '#1e293b',
+            padding: '2rem',
+            borderRadius: '1rem',
+            border: '1px solid #334155'
+          }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏆</div>
+            <h3 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Goal Test</h3>
+            <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>
+              Triggers Goal DIY scene (200 subs)
+            </p>
+            <button
+              onClick={() => handleTest('goal', '/test/goal', 'Goal Test')}
+              disabled={loading === 'goal'}
+              style={{
+                backgroundColor: loading === 'goal' ? '#4b5563' : '#8b5cf6',
+                color: 'white',
+                border: 'none',
+                padding: '0.75rem 1.5rem',
+                borderRadius: '0.5rem',
+                fontSize: '1rem',
+                fontWeight: '600',
+                cursor: loading === 'goal' ? 'not-allowed' : 'pointer',
+                width: '100%'
+              }}
+            >
+              {loading === 'goal' ? 'Testing...' : 'Test Now'}
+            </button>
+          </div>
         </div>
 
-        {/* Test Controls */}
-        <div className="max-w-4xl mx-auto mt-12">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold mb-2">🎮 Test Your Lights</h2>
-            <p className="text-muted-foreground">Trigger your Govee curtain lights directly</p>
-          </div>
-          
-          <div className="grid md:grid-cols-3 gap-4">
-            <TestButton
-              title="💰 Payment Test"
-              description="Simulate a $25 Stripe payment"
-              color="bg-green-500"
-              endpoint="/test/payment"
-            />
-            <TestButton
-              title="🎯 Subscriber Test"
-              description="Simulate 1000 YouTube milestone"
-              color="bg-red-500"
-              endpoint="/test/subscriber-milestone"
-            />
-            <TestButton
-              title="🔴 YouTube Test"
-              description="Simulate new subscriber"
-              color="bg-red-600"
-              endpoint="/test/red-youtube"
-            />
-          </div>
-        </div>
-
-        <div className="text-center mt-8">
-          <div className="text-sm text-muted-foreground mb-2">
-            Lights will flash these colors when events occur (auto-off after 3 seconds)
-          </div>
-          <div className="flex justify-center gap-4 text-xs">
-            <div className="flex items-center gap-1">
-              <span>💰 Stripe:</span>
-              <div
-                className="w-3 h-3 rounded border"
-                style={{ backgroundColor: getColorPreview(config.stripe) || '#666' }}
-              />
-              <span className="text-muted-foreground">Scene {config.stripe}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span>📅 Calendar:</span>
-              <div
-                className="w-3 h-3 rounded border"
-                style={{ backgroundColor: getColorPreview(config.calendar) || '#666' }}
-              />
-              <span className="text-muted-foreground">Scene {config.calendar}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span>🔴 YouTube:</span>
-              <div
-                className="w-3 h-3 rounded border"
-                style={{ backgroundColor: getColorPreview(config.youtube) || '#666' }}
-              />
-              <span className="text-muted-foreground">Scene {config.youtube}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function AppContent() {
-  const [authToken, setAuthToken] = useState<string | null>(null)
-  const [currentUser, setCurrentUser] = useState<any>(null)
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'settings'>('dashboard')
-
-  // Check for existing auth token on app load
-  useEffect(() => {
-    const token = localStorage.getItem('auth_token')
-    if (token) {
-      setAuthToken(token)
-    }
-  }, [])
-
-  // Fetch current user info when we have a token
-  const { data: userInfo, isLoading: userLoading, error: userError } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: async () => {
-      const response = await axios.get(`${API_BASE}/auth/me`, {
-        headers: { Authorization: `Bearer ${authToken}` }
-      })
-      return response.data
-    },
-    enabled: !!authToken,
-    retry: false
-  })
-
-  // Update current user when query succeeds
-  useEffect(() => {
-    if (userInfo) {
-      setCurrentUser(userInfo)
-    }
-  }, [userInfo])
-
-  // Handle auth token error (invalid/expired)
-  useEffect(() => {
-    if (userError && authToken) {
-      console.log('Auth error, clearing token:', userError)
-      handleLogout()
-    }
-  }, [userError, authToken])
-
-  const handleAuthenticated = (token: string, user: any) => {
-    setAuthToken(token)
-    setCurrentUser(user)
-  }
-
-  const handleLogout = () => {
-    localStorage.removeItem('auth_token')
-    setAuthToken(null)
-    setCurrentUser(null)
-    setCurrentPage('dashboard')
-  }
-
-  // Skip authentication for developer use
-  // if (!authToken) {
-  //   return <Auth onAuthenticated={handleAuthenticated} />
-  // }
-
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Navigation Header */}
-      <nav className="border-b border-border bg-card">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            {/* Logo and Brand */}
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Lightbulb className="h-6 w-6 text-primary" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold">Gotham Lights</h1>
-                <p className="text-xs text-muted-foreground">Smart Automation</p>
-              </div>
-            </div>
-
-            {/* Navigation Tabs */}
-            <div className="flex items-center gap-1">
-              <Button
-                variant={currentPage === 'dashboard' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setCurrentPage('dashboard')}
-                className="gap-2"
-              >
-                <Home className="h-4 w-4" />
-                Dashboard
-              </Button>
-              <Button
-                variant={currentPage === 'settings' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setCurrentPage('settings')}
-                className="gap-2"
-              >
-                <SettingsIcon className="h-4 w-4" />
-                Settings
-              </Button>
-            </div>
-
-            {/* Developer Mode */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <p className="text-sm font-medium">Developer Mode</p>
-                  <p className="text-xs text-muted-foreground">Direct Access</p>
+        {/* Results */}
+        {Object.keys(results).length > 0 && (
+          <div style={{ textAlign: 'left' }}>
+            <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Test Results</h2>
+            {Object.entries(results).map(([testType, result]: [string, any]) => (
+              <div key={testType} style={{
+                backgroundColor: result.success ? '#064e3b' : '#7f1d1d',
+                border: `1px solid ${result.success ? '#065f46' : '#991b1b'}`,
+                padding: '1rem',
+                borderRadius: '0.5rem',
+                marginBottom: '1rem'
+              }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between',
+                  marginBottom: '0.5rem'
+                }}>
+                  <strong>{testType.toUpperCase()}</strong>
+                  <span style={{ fontSize: '0.875rem', color: '#94a3b8' }}>
+                    {result.timestamp.toLocaleTimeString()}
+                  </span>
                 </div>
-                <div className="p-2 rounded-full bg-primary/10">
-                  <User className="h-4 w-4 text-primary" />
-                </div>
+                {result.success ? (
+                  <div>
+                    <div style={{ color: '#6ee7b7' }}>✅ {result.data.message}</div>
+                    {result.data.celebration && (
+                      <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginTop: '0.5rem' }}>
+                        Scene: {result.data.celebration.scene_name} (ID: {result.data.celebration.scene_id})
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ color: '#fca5a5' }}>❌ {result.error}</div>
+                )}
               </div>
-            </div>
+            ))}
           </div>
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {currentPage === 'dashboard' ? (
-          <Dashboard authToken={authToken || undefined} />
-        ) : (
-          <Settings authToken={authToken || undefined} />
         )}
-      </main>
 
-      {/* Connection Status */}
-      <div className="fixed bottom-4 right-4">
-        <Badge variant="secondary" className="gap-2 shadow-lg">
-          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          Connected
-        </Badge>
+        {/* Footer */}
+        <div style={{ 
+          marginTop: '3rem', 
+          padding: '1rem',
+          borderTop: '1px solid #334155',
+          color: '#94a3b8',
+          fontSize: '0.875rem'
+        }}>
+          <p>Each test triggers a DIY scene for 5 seconds, then returns to previous state</p>
+          <p>API: {API_BASE}</p>
+        </div>
       </div>
     </div>
-  )
-}
-
-function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <AppContent />
-      <Toaster position="top-right" richColors />
-    </QueryClientProvider>
   )
 }
 
