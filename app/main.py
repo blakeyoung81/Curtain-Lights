@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-from .govee import set_scene, get_devices, test_device_connection, set_color
+from .govee import set_scene, get_devices, test_device_connection, set_color, red_youtube_celebration
 from .auth import auth_manager, get_current_user, get_google_oauth_url, get_stripe_oauth_url
 from .oauth_integrations import google_oauth, google_calendar, youtube_service, stripe_oauth
 from .payment_interrupts import payment_interrupt_manager
@@ -491,6 +491,54 @@ async def test_subscriber_milestone(
             "message": f"Testing {milestone} subscriber milestone celebration",
             "celebration_amount": celebration_amount,
             "milestone": milestone
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/youtube/check-new-subscribers")
+async def check_new_youtube_subscribers(
+    channel_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Check for new YouTube subscribers and trigger red lights"""
+    try:
+        subscriber_check = await youtube_monitor.check_for_new_subscribers(channel_id)
+        
+        # If there are new subscribers, trigger red light celebrations
+        if subscriber_check.get("has_new_subscribers"):
+            new_count = subscriber_check["new_subscribers"]
+            
+            # Trigger red celebration for each new subscriber
+            for i in range(min(new_count, 5)):  # Max 5 celebrations to avoid spam
+                await red_youtube_celebration(duration=3)
+                if i < min(new_count, 5) - 1:  # Don't wait after the last one
+                    await asyncio.sleep(1)  # Brief pause between celebrations
+            
+            print(f"🔴 Triggered {min(new_count, 5)} red celebrations for {new_count} new subscribers!")
+            
+        return subscriber_check
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/test/red-youtube")
+async def test_red_youtube_celebration(
+    new_subscribers: int = 1,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Test red YouTube subscriber celebration"""
+    try:
+        # Trigger red celebration for specified number of new subscribers
+        celebrations = min(new_subscribers, 5)  # Max 5 to avoid spam
+        
+        for i in range(celebrations):
+            await red_youtube_celebration(duration=3)
+            if i < celebrations - 1:  # Don't wait after the last one
+                await asyncio.sleep(1)  # Brief pause between celebrations
+        
+        return {
+            "message": f"Triggered {celebrations} red YouTube celebrations for {new_subscribers} new subscribers",
+            "celebrations_triggered": celebrations,
+            "new_subscribers": new_subscribers
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

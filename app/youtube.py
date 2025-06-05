@@ -88,8 +88,8 @@ class YouTubeMonitor:
             logger.error(f"Error getting channel stats: {str(e)}")
             return {"error": str(e)}
 
-    async def check_subscriber_milestone(self, channel_id: str) -> Dict:
-        """Check if subscriber count hit a milestone worth celebrating"""
+    async def check_for_new_subscribers(self, channel_id: str) -> Dict:
+        """Check for any new subscribers since last check (for red light celebrations)"""
         current_stats = await self.get_channel_stats(channel_id)
         
         if "error" in current_stats:
@@ -100,6 +100,31 @@ class YouTubeMonitor:
         
         # Update stored count
         self.last_subscriber_count = current_count
+        
+        # Check for any new subscribers
+        new_subscribers = max(0, current_count - previous_count)
+        
+        result = {
+            "current_subscribers": current_count,
+            "previous_subscribers": previous_count,
+            "new_subscribers": new_subscribers,
+            "has_new_subscribers": new_subscribers > 0,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        return result
+
+    async def check_subscriber_milestone(self, channel_id: str) -> Dict:
+        """Check if subscriber count hit a milestone worth celebrating"""
+        current_stats = await self.get_channel_stats(channel_id)
+        
+        if "error" in current_stats:
+            return current_stats
+        
+        current_count = current_stats["subscriber_count"]
+        previous_count = self.last_subscriber_count
+        
+        # Don't update count here since check_for_new_subscribers() already did it
         
         # Check for milestones
         milestone_reached = None

@@ -177,4 +177,35 @@ async def test_govee_connection() -> bool:
         response = requests.get(url, headers=headers, timeout=10)
         return response.status_code == 200
     except Exception:
+        return False
+
+async def red_youtube_celebration(duration: int = 5) -> bool:
+    """Quick red flash celebration for new YouTube subscribers"""
+    try:
+        print("🔴 Starting red YouTube subscriber celebration!")
+        
+        # Flash pattern: red -> off -> red -> off -> red
+        # Flash 1
+        await set_color(255, 0, 0)  # Bright red
+        await asyncio.sleep(0.8)
+        await test_device_connection("turn", "off")
+        await asyncio.sleep(0.3)
+        
+        # Flash 2
+        await set_color(255, 0, 0)  # Bright red
+        await asyncio.sleep(0.8)
+        await test_device_connection("turn", "off")
+        await asyncio.sleep(0.3)
+        
+        # Flash 3 (longer)
+        await set_color(255, 0, 0)  # Bright red
+        await asyncio.sleep(duration - 2.2)  # Remaining time
+        
+        # Turn off
+        await test_device_connection("turn", "off")
+        
+        print("✅ Red YouTube celebration completed!")
+        return True
+    except Exception as e:
+        print(f"❌ Error in red YouTube celebration: {e}")
         return False 
