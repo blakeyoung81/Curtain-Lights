@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends, Form
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends, Form, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, HTMLResponse
@@ -11,6 +11,10 @@ import asyncio
 from datetime import datetime
 import secrets
 from dotenv import load_dotenv
+from PIL import Image
+import io
+import base64
+from pathlib import Path
 
 # Load environment variables
 load_dotenv()
@@ -32,9 +36,51 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files for serving uploaded images
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Load environment variables
 stripe.api_key = os.getenv("STRIPE_SK")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+
+# Create directories for storing images
+os.makedirs("static/images/payment", exist_ok=True)
+os.makedirs("static/images/youtube", exist_ok=True)
+
+# Global variable to track monitoring task
+youtube_monitoring_task = None
+
+@app.on_event("startup")
+async def startup_event():
+    """Start background tasks when the application starts"""
+    global youtube_monitoring_task
+    
+    # Start YouTube monitoring automatically if channel ID is configured
+    youtube_channel_id = os.getenv("YOUTUBE_CHANNEL_ID")
+    if youtube_channel_id:
+        print(f"🎬 Starting automatic YouTube monitoring for channel: {youtube_channel_id}")
+        
+        # Initialize the monitor
+        await youtube_monitor.start_monitoring(youtube_channel_id, check_interval=300)  # Check every 5 minutes
+        
+        # Start the background monitoring task
+        youtube_monitoring_task = asyncio.create_task(check_subscriber_milestones_task())
+        print("✅ YouTube monitoring started successfully!")
+    else:
+        print("⚠️ No YOUTUBE_CHANNEL_ID found in environment variables")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up background tasks when the application shuts down"""
+    global youtube_monitoring_task
+    
+    if youtube_monitoring_task:
+        youtube_monitoring_task.cancel()
+        try:
+            await youtube_monitoring_task
+        except asyncio.CancelledError:
+            pass
+        print("🛑 YouTube monitoring stopped")
 
 # Predefined color patterns for different "scenes"
 COLOR_PATTERNS = {
@@ -75,30 +121,212 @@ class TestLightRequest(BaseModel):
     action: str  # "on", "off", "color", "scene"
     value: Optional[Any] = None
 
+class ImageConfig(BaseModel):
+    celebration_type: str  # "payment_mini", "payment_standard", "payment_major", "payment_premium", "youtube_subscriber", "youtube_milestone"
+    image_path: str
+
+# Image processing functions
+def process_image_for_lights(image_file: bytes, max_width: int = 64, max_height: int = 64) -> str:
+    """
+    Process uploaded image for LED display:
+    - Resize to LED grid dimensions (recommended: 64x64 or smaller)
+    - Enhance contrast and saturation for better LED visibility
+    - Save as optimized format
+    Returns the file path of the processed image
+    """
+    try:
+        # Open image from bytes
+        image = Image.open(io.BytesIO(image_file))
+        
+        # Convert to RGB if necessary
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        # Resize while maintaining aspect ratio
+        image.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+        
+        # Enhance for LED display
+        from PIL import ImageEnhance
+        
+        # Increase contrast for better LED visibility
+        enhancer = ImageEnhance.Contrast(image)
+        image = enhancer.enhance(1.3)
+        
+        # Increase saturation for more vibrant colors
+        enhancer = ImageEnhance.Color(image)
+        image = enhancer.enhance(1.4)
+        
+        # Increase brightness slightly
+        enhancer = ImageEnhance.Brightness(image)
+        image = enhancer.enhance(1.1)
+        
+        return image
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error processing image: {str(e)}")
+
+def image_to_color_grid(image: Image.Image) -> List[List[Dict[str, int]]]:
+    """Convert processed image to a grid of RGB color values for LED display"""
+    width, height = image.size
+    color_grid = []
+    
+    for y in range(height):
+        row = []
+        for x in range(width):
+            r, g, b = image.getpixel((x, y))
+            row.append({"r": r, "g": g, "b": b})
+        color_grid.append(row)
+    
+    return color_grid
+
 # OAuth state management
 oauth_states = {}
 
-async def trigger_color_scene(scene_type: str, user_email: str) -> None:
-    """Background task to trigger a color scene for a specific user"""
+# Image upload endpoints
+@app.post("/upload/celebration-image")
+async def upload_celebration_image(
+    celebration_type: str = Form(...),
+    file: UploadFile = File(...)
+):
+    """
+    Upload and process a custom image for celebrations
+    
+    celebration_type options:
+    - payment_mini: $0-19 payments
+    - payment_standard: $20-49 payments  
+    - payment_major: $50-99 payments
+    - payment_premium: $100+ payments
+    - youtube_subscriber: New subscriber celebrations
+    - youtube_milestone: Milestone celebrations
+    """
+    
+    # Validate celebration type
+    valid_types = [
+        "payment_mini", "payment_standard", "payment_major", "payment_premium",
+        "youtube_subscriber", "youtube_milestone"
+    ]
+    
+    if celebration_type not in valid_types:
+        raise HTTPException(status_code=400, detail=f"Invalid celebration type. Must be one of: {valid_types}")
+    
+    # Validate file type
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    
     try:
-        user_settings = auth_manager.get_user_settings(user_email)
-        scene_id = user_settings.get("scenes", {}).get(scene_type, 0)
+        # Read file content
+        image_content = await file.read()
         
-        if scene_id in COLOR_PATTERNS:
-            color = COLOR_PATTERNS[scene_id]
-            success = await set_color(color["r"], color["g"], color["b"])
-            if success:
-                print(f"Triggered {scene_type} color scene for {user_email}: {scene_id} -> RGB({color['r']}, {color['g']}, {color['b']})")
-                # Turn off after 3 seconds
-                await asyncio.sleep(3)
-                await test_device_connection("turn", "off")
-                print(f"Turned off lights after {scene_type} scene for {user_email}")
-            else:
-                print(f"Failed to trigger {scene_type} scene for {user_email}")
+        # Process image for LED display
+        processed_image = process_image_for_lights(image_content)
+        
+        # Generate filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{celebration_type}_{timestamp}.png"
+        
+        # Determine directory based on type
+        if celebration_type.startswith("payment"):
+            directory = "static/images/payment"
         else:
-            print(f"Invalid scene ID for {scene_type}: {scene_id}")
+            directory = "static/images/youtube"
+        
+        file_path = os.path.join(directory, filename)
+        
+        # Save processed image
+        processed_image.save(file_path, "PNG", optimize=True)
+        
+        # Convert to color grid for LED display
+        color_grid = image_to_color_grid(processed_image)
+        
+        # Save color grid as JSON for fast loading
+        grid_path = file_path.replace('.png', '_grid.json')
+        with open(grid_path, 'w') as f:
+            json.dump(color_grid, f)
+        
+        # Update configuration to use this image
+        config_path = "static/images/config.json"
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+        else:
+            config = {}
+        
+        config[celebration_type] = {
+            "image_path": file_path,
+            "grid_path": grid_path,
+            "uploaded_at": datetime.now().isoformat(),
+            "original_filename": file.filename,
+            "dimensions": f"{processed_image.width}x{processed_image.height}"
+        }
+        
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+        
+        return {
+            "status": "success",
+            "message": f"Image uploaded and processed for {celebration_type}",
+            "celebration_type": celebration_type,
+            "file_path": file_path,
+            "dimensions": f"{processed_image.width}x{processed_image.height}",
+            "grid_size": f"{len(color_grid)}x{len(color_grid[0]) if color_grid else 0}",
+            "recommendations": {
+                "optimal_dimensions": "64x64 pixels or smaller",
+                "best_image_types": ["High contrast images", "Bold colors", "Simple designs", "Logos or icons"],
+                "avoid": ["Fine details", "Text smaller than 8px", "Low contrast images"]
+            }
+        }
+        
     except Exception as e:
-        print(f"Error triggering {scene_type} scene for {user_email}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing upload: {str(e)}")
+
+@app.get("/celebration-images")
+async def get_celebration_images():
+    """Get all uploaded celebration images and their configurations"""
+    config_path = "static/images/config.json"
+    
+    if not os.path.exists(config_path):
+        return {"images": {}, "message": "No custom images uploaded yet"}
+    
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    
+    # Add preview URLs
+    for celebration_type, image_info in config.items():
+        image_info["preview_url"] = f"/static/images/{image_info['image_path'].split('/')[-1]}"
+    
+    return {"images": config}
+
+@app.delete("/celebration-images/{celebration_type}")
+async def delete_celebration_image(celebration_type: str):
+    """Delete a celebration image"""
+    config_path = "static/images/config.json"
+    
+    if not os.path.exists(config_path):
+        raise HTTPException(status_code=404, detail="No images found")
+    
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    
+    if celebration_type not in config:
+        raise HTTPException(status_code=404, detail=f"No image found for {celebration_type}")
+    
+    # Delete files
+    image_info = config[celebration_type]
+    try:
+        if os.path.exists(image_info["image_path"]):
+            os.remove(image_info["image_path"])
+        if os.path.exists(image_info["grid_path"]):
+            os.remove(image_info["grid_path"])
+    except Exception as e:
+        print(f"Error deleting files: {e}")
+    
+    # Remove from config
+    del config[celebration_type]
+    
+    with open(config_path, 'w') as f:
+        json.dump(config, f, indent=2)
+    
+    return {"status": "success", "message": f"Deleted image for {celebration_type}"}
 
 # Authentication endpoints
 @app.post("/auth/register")

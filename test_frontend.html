@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Curtain Lights - Control Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.2s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card h2 {
+            margin-bottom: 20px;
+            color: #4a5568;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .btn {
+            padding: 15px 20px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .payment-btn {
+            background: linear-gradient(135deg, #48bb78, #38a169);
+        }
+
+        .youtube-btn {
+            background: linear-gradient(135deg, #e53e3e, #c53030);
+        }
+
+        .milestone-btn {
+            background: linear-gradient(135deg, #805ad5, #6b46c1);
+        }
+
+        .health-btn {
+            background: linear-gradient(135deg, #4299e1, #3182ce);
+            grid-column: 1 / -1;
+        }
+
+        .input-group {
+            margin: 15px 0;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.2s ease;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #4299e1;
+        }
+
+        .status {
+            margin: 15px 0;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+
+        .status.success {
+            background: #f0fff4;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+        }
+
+        .status.error {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 1px solid #feb2b2;
+        }
+
+        .status.info {
+            background: #ebf8ff;
+            color: #2a4365;
+            border: 1px solid #90cdf4;
+        }
+
+        code {
+            background: #f7fafc;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 14px;
+        }
+
+        .celebration-display {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin: 20px 0;
+            padding: 25px;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            animation: celebrationPulse 2s ease-in-out;
+        }
+
+        .money-celebration {
+            background: linear-gradient(135deg, #48bb78, #38a169);
+            color: white;
+            border: 3px solid #2d7d32;
+        }
+
+        .youtube-celebration {
+            background: linear-gradient(135deg, #e53e3e, #c53030);
+            color: white;
+            border: 3px solid #c53030;
+        }
+
+        .celebration-icon {
+            font-size: 2.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .youtube-logo {
+            width: 40px;
+            height: 28px;
+            background: white;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #e53e3e;
+            font-size: 12px;
+            padding: 4px 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        @keyframes celebrationPulse {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.05); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .stats-grid {
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+            gap: 15px; 
+            margin-top: 15px;
+        }
+
+        .stat-card {
+            text-align: center; 
+            padding: 15px; 
+            background: #f7fafc; 
+            border-radius: 8px;
+        }
+
+        .stat-value {
+            font-weight: bold;
+        }
+
+        .stat-label {
+            font-size: 14px; 
+            color: #718096;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎭 Curtain Lights</h1>
+            <p>Your Personal Light Celebration System</p>
+        </div>
+
+        <div class="grid">
+            <!-- Image Upload -->
+            <div class="card">
+                <h2>🖼️ Custom Celebration Images</h2>
+                <p>Upload custom images for each celebration type:</p>
+                
+                <div class="input-group">
+                    <label>Select Celebration Type:</label>
+                    <select id="celebrationType" style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 16px;">
+                        <option value="payment_mini">Payment Mini ($0-19)</option>
+                        <option value="payment_standard">Payment Standard ($20-49)</option>
+                        <option value="payment_major">Payment Major ($50-99)</option>
+                        <option value="payment_premium">Payment Premium ($100+)</option>
+                        <option value="youtube_subscriber">YouTube New Subscribers</option>
+                        <option value="youtube_milestone">YouTube Milestones</option>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label>Choose Image File:</label>
+                    <input type="file" id="imageFile" accept="image/*" style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    <div style="font-size: 12px; color: #718096; margin-top: 5px;">
+                        📋 Best results: High contrast, bold colors, simple designs, 64x64px or smaller
+                    </div>
+                </div>
+
+                <button class="btn payment-btn" onclick="uploadImage()" style="width: 100%; margin-bottom: 15px;">Upload & Process Image</button>
+                
+                <button class="btn" onclick="loadCurrentImages()" style="width: 100%; background: linear-gradient(135deg, #4299e1, #3182ce);">View Current Images</button>
+
+                <div id="imageStatus"></div>
+                <div id="currentImages"></div>
+            </div>
+
+            <!-- Payment Testing -->
+            <div class="card">
+                <h2>💰 Payment Celebrations</h2>
+                <p>Test Stripe payment celebrations with different amounts:</p>
+                
+                <div class="button-grid">
+                    <button class="btn payment-btn" onclick="testPayment(15)">$15 - Mini 🎈</button>
+                    <button class="btn payment-btn" onclick="testPayment(25)">$25 - Standard ⭐</button>
+                    <button class="btn payment-btn" onclick="testPayment(75)">$75 - Major 💎</button>
+                    <button class="btn payment-btn" onclick="testPayment(150)">$150 - Premium 👑</button>
+                </div>
+
+                <div class="input-group">
+                    <label>Custom Amount:</label>
+                    <input type="number" id="customAmount" placeholder="Enter amount" step="0.01">
+                    <button class="btn payment-btn" onclick="testCustomPayment()" style="margin-top: 10px; width: 100%;">Test Custom Amount</button>
+                </div>
+
+                <div id="paymentStatus"></div>
+            </div>
+
+            <!-- YouTube Testing -->
+            <div class="card">
+                <h2>📺 YouTube Celebrations</h2>
+                <p>Test subscriber milestone and new subscriber celebrations:</p>
+                
+                <div class="button-grid">
+                    <button class="btn youtube-btn" onclick="testYouTubeRed(1)">1 New Subscriber</button>
+                    <button class="btn youtube-btn" onclick="testYouTubeRed(3)">3 New Subscribers</button>
+                    <button class="btn youtube-btn" onclick="testYouTubeRed(5)">5 New Subscribers</button>
+                </div>
+
+                <div class="button-grid">
+                    <button class="btn milestone-btn" onclick="testMilestone(100)">100 Milestone</button>
+                    <button class="btn milestone-btn" onclick="testMilestone(500)">500 Milestone</button>
+                    <button class="btn milestone-btn" onclick="testMilestone(1000)">1K Milestone</button>
+                    <button class="btn milestone-btn" onclick="testMilestone(5000)">5K Milestone</button>
+                </div>
+
+                <div class="input-group">
+                    <label>Custom New Subscribers:</label>
+                    <input type="number" id="customSubs" placeholder="Enter number" min="1">
+                    <button class="btn youtube-btn" onclick="testCustomYouTube()" style="margin-top: 10px; width: 100%;">Test Custom</button>
+                </div>
+
+                <div id="youtubeStatus"></div>
+            </div>
+        </div>
+
+        <!-- Service Health -->
+        <div class="card">
+            <h2>⚡ Service Status</h2>
+            <p>Check if your Render service is running and responsive:</p>
+            <button class="btn health-btn" onclick="checkHealth()">Check Service Health</button>
+            <div id="healthStatus"></div>
+        </div>
+
+        <!-- Quick Stats -->
+        <div class="card">
+            <h2>📊 Celebration Patterns</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" style="color: #38a169;">$0-19</div>
+                    <div class="stat-label">Mini • 10 seconds</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color: #5a67d8;">$20-49</div>
+                    <div class="stat-label">Standard • 15 seconds</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color: #d69e2e;">$50-99</div>
+                    <div class="stat-label">Major • 20 seconds</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" style="color: #805ad5;">$100+</div>
+                    <div class="stat-label">Premium • 30 seconds</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://curtain-lights.onrender.com';
+
+        function showStatus(elementId, message, type) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        function showCelebration(elementId, type, amount = null, count = null) {
+            const element = document.getElementById(elementId);
+            let celebrationHTML = '';
+            
+            if (type === 'payment') {
+                celebrationHTML = `
+                    <div class="celebration-display money-celebration">
+                        <div class="celebration-icon">💵</div>
+                        <div>
+                            <div style="font-size: 24px;">$${amount}</div>
+                            <div style="font-size: 14px; opacity: 0.9;">Payment Received!</div>
+                        </div>
+                        <div class="celebration-icon">🎉</div>
+                    </div>
+                `;
+            } else if (type === 'youtube') {
+                celebrationHTML = `
+                    <div class="celebration-display youtube-celebration">
+                        <div class="youtube-logo">▶️</div>
+                        <div>
+                            <div style="font-size: 20px;">${count} New Subscriber${count > 1 ? 's' : ''}!</div>
+                            <div style="font-size: 14px; opacity: 0.9;">Red Flash Celebration</div>
+                        </div>
+                        <div class="celebration-icon">🔴</div>
+                    </div>
+                `;
+            } else if (type === 'milestone') {
+                celebrationHTML = `
+                    <div class="celebration-display youtube-celebration">
+                        <div class="youtube-logo">▶️</div>
+                        <div>
+                            <div style="font-size: 20px;">${count} Milestone!</div>
+                            <div style="font-size: 14px; opacity: 0.9;">Special Celebration</div>
+                        </div>
+                        <div class="celebration-icon">🎊</div>
+                    </div>
+                `;
+            }
+            
+            element.innerHTML = celebrationHTML;
+        }
+
+        async function makeRequest(endpoint, method = 'GET', body = null) {
+            const headers = {
+                'Content-Type': 'application/json',
+            };
+
+            const options = {
+                method,
+                headers,
+            };
+
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                const data = await response.json();
+                return { success: response.ok, data, status: response.status };
+            } catch (error) {
+                return { success: false, error: error.message };
+            }
+        }
+
+        async function testPayment(amount) {
+            showStatus('paymentStatus', `🎊 Testing payment celebration for $${amount}...`, 'info');
+            
+            const result = await makeRequest(`/test/payment?amount=${amount}`, 'POST');
+
+            if (result.success) {
+                const celebration = result.data.celebration;
+                showCelebration('paymentStatus', 'payment', amount);
+                setTimeout(() => {
+                    showStatus('paymentStatus', 
+                        `✨ ${celebration.pattern} celebration completed! Duration: ${celebration.duration}s`, 
+                        'success'
+                    );
+                }, 3000);
+            } else {
+                showStatus('paymentStatus', `❌ Test failed: ${result.data?.detail || result.error}`, 'error');
+            }
+        }
+
+        async function testCustomPayment() {
+            const amount = document.getElementById('customAmount').value;
+            if (!amount) {
+                showStatus('paymentStatus', '⚠️ Please enter an amount', 'error');
+                return;
+            }
+            await testPayment(parseFloat(amount));
+        }
+
+        async function testYouTubeRed(newSubs) {
+            showStatus('youtubeStatus', `📺 Testing red YouTube celebration for ${newSubs} new subscribers...`, 'info');
+            
+            const result = await makeRequest(`/test/red-youtube?new_subscribers=${newSubs}`, 'POST');
+
+            if (result.success) {
+                showCelebration('youtubeStatus', 'youtube', null, newSubs);
+                setTimeout(() => {
+                    showStatus('youtubeStatus', 
+                        `🔴 RED celebration completed! ${result.data.celebrations_triggered} flashes for ${newSubs} new subscribers!`, 
+                        'success'
+                    );
+                }, 3000);
+            } else {
+                showStatus('youtubeStatus', `❌ Test failed: ${result.data?.detail || result.error}`, 'error');
+            }
+        }
+
+        async function testMilestone(milestone) {
+            showStatus('youtubeStatus', `🎯 Testing milestone celebration for ${milestone} subscribers...`, 'info');
+            
+            const result = await makeRequest(`/test/subscriber-milestone?milestone=${milestone}`, 'POST');
+
+            if (result.success) {
+                showCelebration('youtubeStatus', 'milestone', null, milestone);
+                setTimeout(() => {
+                    showStatus('youtubeStatus', 
+                        `🎊 MILESTONE celebration completed for ${milestone} subscribers!`, 
+                        'success'
+                    );
+                }, 3000);
+            } else {
+                showStatus('youtubeStatus', `❌ Test failed: ${result.data?.detail || result.error}`, 'error');
+            }
+        }
+
+        async function testCustomYouTube() {
+            const subs = document.getElementById('customSubs').value;
+            if (!subs) {
+                showStatus('youtubeStatus', '⚠️ Please enter number of subscribers', 'error');
+                return;
+            }
+            await testYouTubeRed(parseInt(subs));
+        }
+
+        async function uploadImage() {
+            const celebrationType = document.getElementById('celebrationType').value;
+            const fileInput = document.getElementById('imageFile');
+            
+            if (!fileInput.files[0]) {
+                showStatus('imageStatus', '⚠️ Please select an image file', 'error');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('celebration_type', celebrationType);
+            formData.append('file', fileInput.files[0]);
+            
+            showStatus('imageStatus', '📤 Uploading and processing image...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/upload/celebration-image`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showStatus('imageStatus', 
+                        `✅ ${result.message}<br/>
+                        🎯 Dimensions: ${result.dimensions}<br/>
+                        📊 Grid Size: ${result.grid_size}<br/>
+                        💡 ${result.recommendations.best_image_types.join(', ')}`, 
+                        'success'
+                    );
+                    
+                    // Clear the file input
+                    fileInput.value = '';
+                    
+                    // Reload current images
+                    setTimeout(loadCurrentImages, 1000);
+                } else {
+                    showStatus('imageStatus', `❌ Upload failed: ${result.detail}`, 'error');
+                }
+            } catch (error) {
+                showStatus('imageStatus', `❌ Upload error: ${error.message}`, 'error');
+            }
+        }
+
+        async function loadCurrentImages() {
+            showStatus('imageStatus', '📋 Loading current images...', 'info');
+            
+            const result = await makeRequest('/celebration-images');
+            
+            if (result.success) {
+                const images = result.data.images;
+                let html = '<div style="margin-top: 20px;"><h3>🖼️ Current Custom Images:</h3>';
+                
+                if (Object.keys(images).length === 0) {
+                    html += '<p style="color: #718096; font-style: italic;">No custom images uploaded yet.</p>';
+                } else {
+                    html += '<div style="display: grid; gap: 15px; margin-top: 15px;">';
+                    
+                    for (const [type, info] of Object.entries(images)) {
+                        const typeName = type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        html += `
+                            <div style="border: 2px solid #e2e8f0; border-radius: 8px; padding: 15px; background: #f7fafc;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <strong>${typeName}</strong><br/>
+                                        <small style="color: #718096;">
+                                            ${info.dimensions} • Uploaded: ${new Date(info.uploaded_at).toLocaleDateString()}
+                                        </small>
+                                    </div>
+                                    <button class="btn" onclick="deleteImage('${type}')" 
+                                            style="background: #e53e3e; padding: 8px 12px; font-size: 12px;">
+                                        Delete
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    html += '</div>';
+                }
+                html += '</div>';
+                
+                document.getElementById('currentImages').innerHTML = html;
+                showStatus('imageStatus', '✅ Images loaded successfully!', 'success');
+            } else {
+                showStatus('imageStatus', `❌ Failed to load images: ${result.error}`, 'error');
+            }
+        }
+
+        async function deleteImage(celebrationType) {
+            if (!confirm(`Are you sure you want to delete the image for ${celebrationType.replace(/_/g, ' ')}?`)) {
+                return;
+            }
+            
+            showStatus('imageStatus', '🗑️ Deleting image...', 'info');
+            
+            const result = await makeRequest(`/celebration-images/${celebrationType}`, 'DELETE');
+            
+            if (result.success) {
+                showStatus('imageStatus', '✅ Image deleted successfully!', 'success');
+                loadCurrentImages();
+            } else {
+                showStatus('imageStatus', `❌ Failed to delete: ${result.error}`, 'error');
+            }
+        }
+
+        async function checkHealth() {
+            showStatus('healthStatus', '⏳ Checking service health...', 'info');
+            
+            const result = await makeRequest('/health');
+
+            if (result.success) {
+                showStatus('healthStatus', 
+                    `✅ Service is healthy! Status: ${result.data.status} | Service: ${result.data.service}`, 
+                    'success'
+                );
+            } else {
+                showStatus('healthStatus', `❌ Service unavailable: ${result.error || 'Connection failed'}`, 'error');
+            }
+        }
+
+        // Auto-check health and load images on page load
+        window.addEventListener('load', () => {
+            checkHealth();
+            loadCurrentImages();
+        });
+    </script>
+</body>
+</html> 
