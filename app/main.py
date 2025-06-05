@@ -19,6 +19,7 @@ from .govee import set_scene, get_devices, test_device_connection, set_color
 from .auth import auth_manager, get_current_user, get_google_oauth_url, get_stripe_oauth_url
 from .oauth_integrations import google_oauth, google_calendar, youtube_service, stripe_oauth
 from .payment_interrupts import payment_interrupt_manager
+from .youtube import youtube_monitor, check_subscriber_milestones_task
 
 app = FastAPI(title="Gotham Lights", version="1.0.0")
 
@@ -396,6 +397,103 @@ async def stop_interrupt(current_user: Dict[str, Any] = Depends(get_current_user
     """Manually stop current payment interrupt"""
     result = await payment_interrupt_manager.stop_current_interrupt()
     return result
+
+# 🎯 YouTube Monitoring endpoints
+
+@app.get("/youtube/stats/{channel_id}")
+async def get_youtube_channel_stats(
+    channel_id: str, 
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Get current YouTube channel statistics"""
+    try:
+        stats = await youtube_monitor.get_channel_stats(channel_id)
+        return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/youtube/monitor/start")
+async def start_youtube_monitoring(
+    channel_id: str,
+    check_interval: int = 300,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Start monitoring YouTube channel for subscriber milestones"""
+    try:
+        result = await youtube_monitor.start_monitoring(channel_id, check_interval)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/youtube/monitor/stop")
+async def stop_youtube_monitoring(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Stop YouTube channel monitoring"""
+    try:
+        result = youtube_monitor.stop_monitoring()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/youtube/monitor/status")
+async def get_youtube_monitoring_status(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Get current YouTube monitoring status"""
+    try:
+        status = await youtube_monitor.get_monitoring_status()
+        return status
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/youtube/check-milestone")
+async def check_subscriber_milestone(
+    channel_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Manually check for subscriber milestones and trigger celebration"""
+    try:
+        milestone_check = await youtube_monitor.check_subscriber_milestone(channel_id)
+        
+        # If milestone reached, trigger celebration lights
+        if milestone_check.get("should_celebrate"):
+            celebration_amount = milestone_check["celebration_amount"]
+            
+            # Trigger the same payment interrupt system with celebration amount
+            await payment_interrupt_manager.trigger_payment_celebration(
+                amount=celebration_amount,
+                payment_type=f"subscriber_milestone_{milestone_check['milestone_reached']}"
+            )
+            
+        return milestone_check
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/test/subscriber-milestone")
+async def test_subscriber_milestone(
+    milestone: int = 1000,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Test subscriber milestone celebration"""
+    try:
+        # Map milestone to celebration amount like the YouTube monitor does
+        milestone_amounts = {
+            100: 5, 500: 10, 1000: 15, 5000: 25, 10000: 50,
+            50000: 75, 100000: 100, 500000: 200, 1000000: 500
+        }
+        
+        celebration_amount = milestone_amounts.get(milestone, 25)  # Default $25
+        
+        # Trigger celebration
+        await payment_interrupt_manager.trigger_payment_celebration(
+            amount=celebration_amount,
+            payment_type=f"test_milestone_{milestone}"
+        )
+        
+        return {
+            "message": f"Testing {milestone} subscriber milestone celebration",
+            "celebration_amount": celebration_amount,
+            "milestone": milestone
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 async def root():
