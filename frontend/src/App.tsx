@@ -102,13 +102,69 @@ function SceneCard({
   )
 }
 
-function Dashboard({ authToken }: { authToken: string }) {
+function TestButton({ 
+  title, 
+  description, 
+  color, 
+  endpoint 
+}: {
+  title: string
+  description: string
+  color: string
+  endpoint: string
+}) {
+  const [isLoading, setIsLoading] = useState(false)
+
+  const handleTest = async () => {
+    setIsLoading(true)
+    try {
+      const response = await axios.post(`${API_BASE}${endpoint}`)
+      toast.success(`${title} triggered! 🎉`)
+      console.log('Test response:', response.data)
+    } catch (error) {
+      toast.error(`Test failed: ${error}`)
+      console.error('Test error:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <Card className="w-full">
+      <CardContent className="p-6">
+        <div className="text-center space-y-4">
+          <div className={`w-12 h-12 rounded-full ${color} mx-auto flex items-center justify-center`}>
+            <Lightbulb className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h3 className="font-semibold">{title}</h3>
+            <p className="text-sm text-muted-foreground">{description}</p>
+          </div>
+          <Button 
+            onClick={handleTest} 
+            disabled={isLoading}
+            className="w-full"
+          >
+            {isLoading ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Testing...
+              </>
+            ) : (
+              'Test Now'
+            )}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function Dashboard({ authToken }: { authToken?: string }) {
   const { data: config, refetch } = useQuery({
     queryKey: ['config'],
     queryFn: async (): Promise<SceneConfig> => {
-      const response = await axios.get(`${API_BASE}/config/scene`, {
-        headers: { Authorization: `Bearer ${authToken}` }
-      })
+      const response = await axios.get(`${API_BASE}/config/scene`)
       return response.data
     },
     refetchInterval: 5000, // Refetch every 5 seconds
@@ -118,18 +174,14 @@ function Dashboard({ authToken }: { authToken: string }) {
   const { data: colorPatterns } = useQuery({
     queryKey: ['colorPatterns'],
     queryFn: async (): Promise<{ patterns: Record<string, ColorPattern> }> => {
-      const response = await axios.get(`${API_BASE}/color-patterns`, {
-        headers: { Authorization: `Bearer ${authToken}` }
-      })
+      const response = await axios.get(`${API_BASE}/color-patterns`)
       return response.data
     },
   })
 
   const mutation = useMutation({
     mutationFn: async (newConfig: SceneConfig) => {
-      const response = await axios.put(`${API_BASE}/config/scene`, newConfig, {
-        headers: { Authorization: `Bearer ${authToken}` }
-      })
+      const response = await axios.put(`${API_BASE}/config/scene`, newConfig)
       return response.data
     },
     onSuccess: () => {
@@ -221,6 +273,35 @@ function Dashboard({ authToken }: { authToken: string }) {
           />
         </div>
 
+        {/* Test Controls */}
+        <div className="max-w-4xl mx-auto mt-12">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold mb-2">🎮 Test Your Lights</h2>
+            <p className="text-muted-foreground">Trigger your Govee curtain lights directly</p>
+          </div>
+          
+          <div className="grid md:grid-cols-3 gap-4">
+            <TestButton
+              title="💰 Payment Test"
+              description="Simulate a $25 Stripe payment"
+              color="bg-green-500"
+              endpoint="/test/payment"
+            />
+            <TestButton
+              title="🎯 Subscriber Test"
+              description="Simulate 1000 YouTube milestone"
+              color="bg-red-500"
+              endpoint="/test/subscriber-milestone"
+            />
+            <TestButton
+              title="🔴 YouTube Test"
+              description="Simulate new subscriber"
+              color="bg-red-600"
+              endpoint="/test/red-youtube"
+            />
+          </div>
+        </div>
+
         <div className="text-center mt-8">
           <div className="text-sm text-muted-foreground mb-2">
             Lights will flash these colors when events occur (auto-off after 3 seconds)
@@ -310,36 +391,10 @@ function AppContent() {
     setCurrentPage('dashboard')
   }
 
-  // Show auth screen if not authenticated
-  if (!authToken) {
-    return <Auth onAuthenticated={handleAuthenticated} />
-  }
-
-  // Show loading while fetching user info
-  if (userLoading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex items-center gap-3">
-          <RefreshCw className="h-6 w-6 animate-spin text-primary" />
-          <span className="text-lg">Loading...</span>
-        </div>
-      </div>
-    )
-  }
-
-  // Show error if user fetch failed
-  if (userError) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <p className="text-lg text-destructive">Authentication failed</p>
-          <Button onClick={handleLogout}>
-            Try Again
-          </Button>
-        </div>
-      </div>
-    )
-  }
+  // Skip authentication for developer use
+  // if (!authToken) {
+  //   return <Auth onAuthenticated={handleAuthenticated} />
+  // }
 
   return (
     <div className="min-h-screen bg-background">
@@ -380,28 +435,17 @@ function AppContent() {
               </Button>
             </div>
 
-            {/* User Menu */}
+            {/* Developer Mode */}
             <div className="flex items-center gap-4">
-              {currentUser && (
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <p className="text-sm font-medium">{currentUser.name}</p>
-                    <p className="text-xs text-muted-foreground">{currentUser.email}</p>
-                  </div>
-                  <div className="p-2 rounded-full bg-primary/10">
-                    <User className="h-4 w-4 text-primary" />
-                  </div>
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <p className="text-sm font-medium">Developer Mode</p>
+                  <p className="text-xs text-muted-foreground">Direct Access</p>
                 </div>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLogout}
-                className="gap-2 text-muted-foreground hover:text-destructive"
-              >
-                <LogOut className="h-4 w-4" />
-                Logout
-              </Button>
+                <div className="p-2 rounded-full bg-primary/10">
+                  <User className="h-4 w-4 text-primary" />
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -410,9 +454,9 @@ function AppContent() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {currentPage === 'dashboard' ? (
-          <Dashboard authToken={authToken} />
+          <Dashboard authToken={authToken || undefined} />
         ) : (
-          <Settings authToken={authToken} />
+          <Settings authToken={authToken || undefined} />
         )}
       </main>
 
