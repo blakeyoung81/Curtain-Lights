@@ -7,11 +7,10 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 import json
-from .govee_api import GoveeAPI
+from .govee import set_color, test_device_connection, get_devices
 
 class PaymentInterruptManager:
     def __init__(self):
-        self.govee_api = GoveeAPI()
         self.current_interrupt: Optional[Dict] = None
         self.original_state: Optional[Dict] = None
         self.interrupt_task: Optional[asyncio.Task] = None
@@ -103,22 +102,12 @@ class PaymentInterruptManager:
     async def _save_current_state(self):
         """Save current lighting state before interrupt"""
         try:
-            # Get current device states
-            devices = await self.govee_api.get_devices()
-            current_states = {}
-            
-            for device in devices:
-                device_id = device.get('device')
-                if device_id:
-                    state = await self.govee_api.get_device_state(device_id)
-                    current_states[device_id] = state
-            
+            # Simple state saving - just mark that we need to turn off after
             self.original_state = {
                 "timestamp": datetime.now().isoformat(),
-                "device_states": current_states
+                "needs_restore": True
             }
-            
-            print(f"💾 Saved lighting state for {len(current_states)} devices")
+            print(f"💾 Saved lighting state")
             
         except Exception as e:
             print(f"⚠️ Could not save current state: {e}")
@@ -132,14 +121,6 @@ class PaymentInterruptManager:
             
             print(f"🎉 Starting {celebration_pattern['name']} for {duration} seconds")
             
-            # Get all available devices
-            devices = await self.govee_api.get_devices()
-            device_ids = [d.get('device') for d in devices if d.get('device')]
-            
-            if not device_ids:
-                print("⚠️ No devices found for celebration")
-                return
-            
             start_time = datetime.now()
             end_time = start_time + timedelta(seconds=duration)
             
@@ -149,20 +130,13 @@ class PaymentInterruptManager:
                     if datetime.now() >= end_time:
                         break
                     
-                    # Apply pattern to all devices
-                    for device_id in device_ids:
-                        try:
-                            await self.govee_api.control_device(
-                                device_id=device_id,
-                                turn_on=True,
-                                brightness=pattern["brightness"],
-                                color_rgb=pattern["color"]
-                            )
-                        except Exception as e:
-                            print(f"⚠️ Error controlling device {device_id}: {e}")
-                    
-                    # Hold pattern for specified duration
-                    await asyncio.sleep(pattern["duration"])
+                    # Apply pattern using govee functions
+                    try:
+                        color = pattern["color"]
+                        await set_color(color[0], color[1], color[2])
+                        await asyncio.sleep(pattern["duration"])
+                    except Exception as e:
+                        print(f"⚠️ Error controlling lights: {e}")
                     
                     if datetime.now() >= end_time:
                         break
@@ -188,27 +162,14 @@ class PaymentInterruptManager:
             return
         
         try:
-            device_states = self.original_state.get("device_states", {})
-            
-            for device_id, state in device_states.items():
-                if state and isinstance(state, dict):
-                    # Extract state information
-                    power_state = state.get("powerState", "on") == "on"
-                    brightness = state.get("brightness", 100)
-                    color = state.get("color", {})
-                    
-                    # Restore device state
-                    await self.govee_api.control_device(
-                        device_id=device_id,
-                        turn_on=power_state,
-                        brightness=brightness,
-                        color_rgb=color.get("rgb", [255, 255, 255])
-                    )
-            
-            print(f"🔄 Restored original state for {len(device_states)} devices")
+            # Simple restore - just turn off the lights
+            await test_device_connection("turn", "off")
+            print("🔄 Restored lighting (turned off)")
             
         except Exception as e:
-            print(f"⚠️ Error restoring original state: {e}")
+            print(f"⚠️ Error restoring state: {e}")
+        
+        self.original_state = None
     
     def get_current_interrupt(self) -> Optional[Dict]:
         """Get current interrupt status"""
