@@ -185,3 +185,12 @@ MIT License - feel free to use this project for personal or commercial purposes.
 ---
 
 **Made with ❤️ for automated lighting experiences**
+
+# Curtain Lights 🎭
+
+Your Personal Light Celebration System - Automated lighting celebrations for Stripe payments and YouTube subscriber milestones using Govee smart lights.
+
+## Latest Update
+- Simplified celebration system: Just 2 image types needed (payment + youtube)
+- 5-second custom celebration followed by amount/subscriber count display
+- 14×20 LED optimization for Govee H70B1 curtain lights (280 LEDs)
