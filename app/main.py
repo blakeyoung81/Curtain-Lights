@@ -1,3 +1,6 @@
+# Curtain Lights API - Updated 2024-12-05
+# Fixed authentication issues for all test endpoints
+
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends, Form, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
