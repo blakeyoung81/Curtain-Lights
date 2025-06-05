@@ -778,10 +778,10 @@ async def get_oauth_status(current_user: Dict[str, Any] = Depends(get_current_us
     }
 
 @app.post("/test/light")
-async def test_light(request: TestLightRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+async def test_light(request: TestLightRequest):
     """Test light controls"""
     try:
-        print(f"Testing light for {current_user['email']}: {request.action} with value {request.value}")
+        print(f"Testing light: {request.action} with value {request.value}")
         if request.action == "on":
             success = await test_device_connection("turn", "on")
         elif request.action == "off":
@@ -804,7 +804,7 @@ async def test_light(request: TestLightRequest, current_user: Dict[str, Any] = D
         else:
             raise HTTPException(status_code=500, detail="Failed to control light")
     except Exception as e:
-        print(f"Error in test_light for {current_user['email']}: {e}")
+        print(f"Error in test_light: {e}")
         raise HTTPException(status_code=500, detail=f"Error controlling light: {str(e)}")
 
 # 🎉 Payment Interrupt Endpoints
