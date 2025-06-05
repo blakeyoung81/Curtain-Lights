@@ -272,10 +272,13 @@
                 </div>
 
                 <div class="input-group">
-                    <label>Choose Image File:</label>
-                    <input type="file" id="imageFile" accept="image/*" style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    <label>Choose Image or GIF File:</label>
+                    <input type="file" id="imageFile" accept="image/*,.gif" style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px;">
                     <div style="font-size: 12px; color: #718096; margin-top: 5px;">
-                        📋 Best results: High contrast, bold colors, simple designs, 64x64px or smaller
+                        🖼️ <strong>Static Images:</strong> High contrast, bold colors, simple designs<br/>
+                        🎬 <strong>Animated GIFs:</strong> 2-10 frames, simple animations, avoid fast motion<br/>
+                        ⚡ <strong>LED Optimized:</strong> Converts to 14×20 pixels for Govee H70B1 (280 LEDs)<br/>
+                        💡 <strong>Pro Tips:</strong> Logos, icons, and geometric shapes work best!
                     </div>
                 </div>
 
@@ -538,13 +541,17 @@
                 const result = await response.json();
                 
                 if (response.ok) {
-                    showStatus('imageStatus', 
-                        `✅ ${result.message}<br/>
-                        🎯 Dimensions: ${result.dimensions}<br/>
-                        📊 Grid Size: ${result.grid_size}<br/>
-                        💡 ${result.recommendations.best_image_types.join(', ')}`, 
-                        'success'
-                    );
+                    let statusMessage = `✅ ${result.message}<br/>🎯 Dimensions: ${result.dimensions}<br/>`;
+                    
+                    if (result.is_animated) {
+                        statusMessage += `🎬 Animation: ${result.frame_count} frames, ${result.total_duration}<br/>`;
+                        statusMessage += `💡 ${result.recommendations.best_gif_types.join(', ')}`;
+                    } else {
+                        statusMessage += `📊 Grid Size: ${result.grid_size || 'N/A'}<br/>`;
+                        statusMessage += `💡 ${result.recommendations.best_image_types?.join(', ') || 'Static image processed'}`;
+                    }
+                    
+                    showStatus('imageStatus', statusMessage, 'success');
                     
                     // Clear the file input
                     fileInput.value = '';
@@ -566,28 +573,43 @@
             
             if (result.success) {
                 const images = result.data.images;
-                let html = '<div style="margin-top: 20px;"><h3>🖼️ Current Custom Images:</h3>';
+                let html = '<div style="margin-top: 20px;"><h3>🖼️ Current Custom Images & LED Previews:</h3>';
                 
                 if (Object.keys(images).length === 0) {
                     html += '<p style="color: #718096; font-style: italic;">No custom images uploaded yet.</p>';
                 } else {
-                    html += '<div style="display: grid; gap: 15px; margin-top: 15px;">';
+                    html += '<div style="display: grid; gap: 20px; margin-top: 15px;">';
                     
                     for (const [type, info] of Object.entries(images)) {
                         const typeName = type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        const isAnimated = info.is_animated || false;
+                        const animationInfo = isAnimated ? 
+                            `🎬 ${info.frame_count} frames, ${info.total_duration_ms}ms` : 
+                            '🖼️ Static image';
+                        
                         html += `
-                            <div style="border: 2px solid #e2e8f0; border-radius: 8px; padding: 15px; background: #f7fafc;">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; background: #f7fafc;">
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
                                     <div>
-                                        <strong>${typeName}</strong><br/>
+                                        <strong style="font-size: 18px;">${typeName}</strong> ${isAnimated ? '🎬' : '📷'}<br/>
                                         <small style="color: #718096;">
-                                            ${info.dimensions} • Uploaded: ${new Date(info.uploaded_at).toLocaleDateString()}
+                                            ${info.dimensions} • ${animationInfo}<br/>
+                                            Uploaded: ${new Date(info.uploaded_at).toLocaleDateString()}
                                         </small>
                                     </div>
-                                    <button class="btn" onclick="deleteImage('${type}')" 
-                                            style="background: #e53e3e; padding: 8px 12px; font-size: 12px;">
-                                        Delete
-                                    </button>
+                                    <div style="display: flex; gap: 10px;">
+                                        <button class="btn" onclick="showLEDPreview('${type}')" 
+                                                style="background: #4299e1; padding: 8px 12px; font-size: 12px;">
+                                            🔍 LED Preview
+                                        </button>
+                                        <button class="btn" onclick="deleteImage('${type}')" 
+                                                style="background: #e53e3e; padding: 8px 12px; font-size: 12px;">
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="preview-${type}" style="display: none; margin-top: 15px; padding: 15px; background: #edf2f7; border-radius: 8px;">
+                                    <!-- LED preview will be loaded here -->
                                 </div>
                             </div>
                         `;
@@ -600,6 +622,50 @@
                 showStatus('imageStatus', '✅ Images loaded successfully!', 'success');
             } else {
                 showStatus('imageStatus', `❌ Failed to load images: ${result.error}`, 'error');
+            }
+        }
+
+        async function showLEDPreview(celebrationType) {
+            const previewElement = document.getElementById(`preview-${celebrationType}`);
+            
+            if (previewElement.style.display === 'block') {
+                previewElement.style.display = 'none';
+                return;
+            }
+            
+            previewElement.innerHTML = '<div style="text-align: center; color: #718096;">🔄 Loading LED preview...</div>';
+            previewElement.style.display = 'block';
+            
+            const result = await makeRequest(`/images/preview/${celebrationType}`);
+            
+            if (result.success) {
+                const preview = result.data;
+                const typeName = celebrationType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                
+                let html = `
+                    <h4 style="margin: 0 0 15px 0; color: #2d3748;">🎯 ${typeName} - LED Transformation Preview</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start;">
+                        <div style="text-align: center;">
+                            <h5 style="margin: 0 0 10px 0; color: #4a5568;">📷 Original Image</h5>
+                            <img src="${preview.original_image}" style="max-width: 100%; height: auto; border: 2px solid #e2e8f0; border-radius: 8px;" alt="Original">
+                        </div>
+                        <div style="text-align: center;">
+                            <h5 style="margin: 0 0 10px 0; color: #4a5568;">⚡ LED Display (${preview.led_dimensions})</h5>
+                            <img src="${preview.led_preview}" style="max-width: 100%; height: auto; border: 2px solid #e2e8f0; border-radius: 8px; image-rendering: pixelated;" alt="LED Preview">
+                            <div style="font-size: 12px; color: #718096; margin-top: 8px;">
+                                Scaled 20x for visibility • Each pixel = 1 LED
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; padding: 12px; background: #e6fffa; border: 1px solid #38b2ac; border-radius: 6px; font-size: 14px;">
+                        💡 <strong>How it works:</strong> Your Govee H70B1 curtain lights will display this pixelated version with each pixel representing one LED. 
+                        The 14×20 grid maps perfectly to your 280 total LEDs (14 strands × 20 LEDs each).
+                    </div>
+                `;
+                
+                previewElement.innerHTML = html;
+            } else {
+                previewElement.innerHTML = `<div style="color: #e53e3e; text-align: center;">❌ Failed to load preview: ${result.error}</div>`;
             }
         }
 
@@ -621,15 +687,75 @@
         }
 
         async function checkHealth() {
-            showStatus('healthStatus', '⏳ Checking service health...', 'info');
+            showStatus('healthStatus', '⏳ Running comprehensive service check...', 'info');
             
-            const result = await makeRequest('/health');
+            const result = await makeRequest('/status/comprehensive');
 
             if (result.success) {
-                showStatus('healthStatus', 
-                    `✅ Service is healthy! Status: ${result.data.status} | Service: ${result.data.service}`, 
-                    'success'
-                );
+                const status = result.data;
+                let html = `<div style="margin-top: 15px;">`;
+                
+                // Overall status
+                const statusColor = status.overall_status === 'healthy' ? '#38a169' : 
+                                  status.overall_status === 'warning' ? '#d69e2e' : '#e53e3e';
+                                  
+                html += `<div style="padding: 15px; background: ${statusColor}; color: white; border-radius: 8px; margin-bottom: 15px;">
+                    <h3 style="margin: 0;">🎯 Overall Status: ${status.overall_status.toUpperCase()}</h3>
+                    <p style="margin: 5px 0 0 0;">${status.message}</p>
+                </div>`;
+                
+                // Service details
+                html += `<div style="display: grid; gap: 15px;">`;
+                
+                for (const [serviceKey, service] of Object.entries(status.services)) {
+                    const serviceStatusColor = service.status === 'healthy' ? '#38a169' : 
+                                             service.status === 'warning' ? '#d69e2e' : '#e53e3e';
+                    const statusIcon = service.status === 'healthy' ? '✅' : 
+                                     service.status === 'warning' ? '⚠️' : '❌';
+                    
+                    html += `<div style="border: 2px solid ${serviceStatusColor}; border-radius: 8px; padding: 15px; background: #f9f9f9;">
+                        <h4 style="margin: 0 0 10px 0; color: ${serviceStatusColor};">
+                            ${statusIcon} ${service.name}
+                        </h4>`;
+                    
+                    if (service.details.error) {
+                        html += `<div style="color: #e53e3e; font-weight: 500;">${service.details.error}</div>`;
+                    } else {
+                        if (service.details.api_key) html += `<div>🔑 API Key: ${service.details.api_key}</div>`;
+                        if (service.details.device_id) html += `<div>📟 Device: ${service.details.device_id}</div>`;
+                        if (service.details.model) html += `<div>🏷️ Model: ${service.details.model}</div>`;
+                        if (service.details.channel_id) html += `<div>📺 Channel: ${service.details.channel_id}</div>`;
+                        if (service.details.subscriber_count) html += `<div>👥 Subscribers: ${service.details.subscriber_count}</div>`;
+                        if (service.details.monitoring_active !== undefined) html += `<div>🔄 Monitoring: ${service.details.monitoring_active ? 'Active' : 'Inactive'}</div>`;
+                        if (service.details.uploaded_images !== undefined) html += `<div>🖼️ Images: ${service.details.uploaded_images}</div>`;
+                        if (service.details.connection) html += `<div>🔗 Connection: ${service.details.connection}</div>`;
+                        if (service.details.webhook_configured !== undefined) html += `<div>🔗 Webhook: ${service.details.webhook_configured ? 'Configured' : 'Not configured'}</div>`;
+                    }
+                    
+                    html += `</div>`;
+                }
+                
+                html += `</div>`;
+                
+                // Summary
+                if (status.summary) {
+                    html += `<div style="margin-top: 15px; padding: 15px; background: #f0f8ff; border-radius: 8px;">
+                        <h4 style="margin: 0 0 10px 0;">📊 Summary</h4>`;
+                    
+                    if (status.summary.successes.length > 0) {
+                        html += `<div style="color: #38a169; margin-bottom: 8px;"><strong>✅ Working:</strong> ${status.summary.successes.join(', ')}</div>`;
+                    }
+                    
+                    if (status.summary.issues.length > 0) {
+                        html += `<div style="color: #e53e3e;"><strong>⚠️ Issues:</strong> ${status.summary.issues.join(', ')}</div>`;
+                    }
+                    
+                    html += `</div>`;
+                }
+                
+                html += `</div>`;
+                
+                document.getElementById('healthStatus').innerHTML = html;
             } else {
                 showStatus('healthStatus', `❌ Service unavailable: ${result.error || 'Connection failed'}`, 'error');
             }

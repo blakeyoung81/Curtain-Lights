@@ -127,13 +127,13 @@ class ImageConfig(BaseModel):
     image_path: str
 
 # Image processing functions
-def process_image_for_lights(image_file: bytes, max_width: int = 64, max_height: int = 64) -> str:
+def process_image_for_lights(image_file: bytes, max_width: int = 14, max_height: int = 20) -> Image.Image:
     """
     Process uploaded image for LED display:
     - Resize to LED grid dimensions (recommended: 64x64 or smaller)
     - Enhance contrast and saturation for better LED visibility
     - Save as optimized format
-    Returns the file path of the processed image
+    Returns the processed PIL Image
     """
     try:
         # Open image from bytes
@@ -166,6 +166,72 @@ def process_image_for_lights(image_file: bytes, max_width: int = 64, max_height:
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error processing image: {str(e)}")
 
+def process_gif_for_lights(image_file: bytes, max_width: int = 14, max_height: int = 20) -> Dict:
+    """
+    Process animated GIF for LED display:
+    - Extract all frames from the GIF
+    - Resize and enhance each frame for LED visibility
+    - Return frame data with timing information
+    """
+    try:
+        # Open GIF from bytes
+        gif = Image.open(io.BytesIO(image_file))
+        
+        if not getattr(gif, "is_animated", False):
+            # Not an animated GIF, treat as static image
+            processed_image = process_image_for_lights(image_file, max_width, max_height)
+            return {
+                "is_animated": False,
+                "frame_count": 1,
+                "frames": [processed_image],
+                "durations": [100]  # 100ms default
+            }
+        
+        frames = []
+        durations = []
+        
+        # Extract all frames
+        for frame_index in range(gif.n_frames):
+            gif.seek(frame_index)
+            
+            # Get frame duration (in milliseconds)
+            duration = gif.info.get('duration', 100)  # Default 100ms if not specified
+            durations.append(max(duration, 50))  # Minimum 50ms for LED visibility
+            
+            # Convert frame to RGB
+            frame = gif.convert('RGB')
+            
+            # Resize while maintaining aspect ratio
+            frame.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+            
+            # Enhance for LED display
+            from PIL import ImageEnhance
+            
+            # Increase contrast
+            enhancer = ImageEnhance.Contrast(frame)
+            frame = enhancer.enhance(1.3)
+            
+            # Increase saturation
+            enhancer = ImageEnhance.Color(frame)
+            frame = enhancer.enhance(1.4)
+            
+            # Increase brightness
+            enhancer = ImageEnhance.Brightness(frame)
+            frame = enhancer.enhance(1.1)
+            
+            frames.append(frame)
+        
+        return {
+            "is_animated": True,
+            "frame_count": len(frames),
+            "frames": frames,
+            "durations": durations,
+            "total_duration": sum(durations)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error processing GIF: {str(e)}")
+
 def image_to_color_grid(image: Image.Image) -> List[List[Dict[str, int]]]:
     """Convert processed image to a grid of RGB color values for LED display"""
     width, height = image.size
@@ -179,6 +245,21 @@ def image_to_color_grid(image: Image.Image) -> List[List[Dict[str, int]]]:
         color_grid.append(row)
     
     return color_grid
+
+def frames_to_animation_data(frames: List[Image.Image], durations: List[int]) -> List[Dict]:
+    """Convert list of frames to animation data with color grids and timing"""
+    animation_frames = []
+    
+    for i, (frame, duration) in enumerate(zip(frames, durations)):
+        color_grid = image_to_color_grid(frame)
+        animation_frames.append({
+            "frame_index": i,
+            "duration_ms": duration,
+            "color_grid": color_grid,
+            "dimensions": f"{frame.width}x{frame.height}"
+        })
+    
+    return animation_frames
 
 # OAuth state management
 oauth_states = {}
@@ -218,64 +299,143 @@ async def upload_celebration_image(
         # Read file content
         image_content = await file.read()
         
-        # Process image for LED display
-        processed_image = process_image_for_lights(image_content)
+        # Check if it's a GIF
+        is_gif = file.content_type == 'image/gif' or file.filename.lower().endswith('.gif')
         
-        # Generate filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{celebration_type}_{timestamp}.png"
-        
-        # Determine directory based on type
-        if celebration_type.startswith("payment"):
-            directory = "static/images/payment"
-        else:
-            directory = "static/images/youtube"
-        
-        file_path = os.path.join(directory, filename)
-        
-        # Save processed image
-        processed_image.save(file_path, "PNG", optimize=True)
-        
-        # Convert to color grid for LED display
-        color_grid = image_to_color_grid(processed_image)
-        
-        # Save color grid as JSON for fast loading
-        grid_path = file_path.replace('.png', '_grid.json')
-        with open(grid_path, 'w') as f:
-            json.dump(color_grid, f)
-        
-        # Update configuration to use this image
-        config_path = "static/images/config.json"
-        if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-        else:
-            config = {}
-        
-        config[celebration_type] = {
-            "image_path": file_path,
-            "grid_path": grid_path,
-            "uploaded_at": datetime.now().isoformat(),
-            "original_filename": file.filename,
-            "dimensions": f"{processed_image.width}x{processed_image.height}"
-        }
-        
-        with open(config_path, 'w') as f:
-            json.dump(config, f, indent=2)
-        
-        return {
-            "status": "success",
-            "message": f"Image uploaded and processed for {celebration_type}",
-            "celebration_type": celebration_type,
-            "file_path": file_path,
-            "dimensions": f"{processed_image.width}x{processed_image.height}",
-            "grid_size": f"{len(color_grid)}x{len(color_grid[0]) if color_grid else 0}",
-            "recommendations": {
-                "optimal_dimensions": "64x64 pixels or smaller",
-                "best_image_types": ["High contrast images", "Bold colors", "Simple designs", "Logos or icons"],
-                "avoid": ["Fine details", "Text smaller than 8px", "Low contrast images"]
+        if is_gif:
+            # Process GIF for LED display
+            gif_data = process_gif_for_lights(image_content)
+            
+            # Generate filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_filename = f"{celebration_type}_{timestamp}"
+            
+            # Determine directory based on type
+            if celebration_type.startswith("payment"):
+                directory = "static/images/payment"
+            else:
+                directory = "static/images/youtube"
+            
+            # Save first frame as preview image
+            preview_path = os.path.join(directory, f"{base_filename}_preview.png")
+            gif_data["frames"][0].save(preview_path, "PNG", optimize=True)
+            
+            # Convert frames to animation data
+            animation_data = frames_to_animation_data(gif_data["frames"], gif_data["durations"])
+            
+            # Save animation data as JSON
+            animation_path = os.path.join(directory, f"{base_filename}_animation.json")
+            with open(animation_path, 'w') as f:
+                json.dump({
+                    "is_animated": gif_data["is_animated"],
+                    "frame_count": gif_data["frame_count"],
+                    "total_duration_ms": gif_data.get("total_duration", sum(gif_data["durations"])),
+                    "frames": animation_data
+                }, f, indent=2)
+            
+            # Update configuration
+            config_path = "static/images/config.json"
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+            else:
+                config = {}
+            
+            first_frame = gif_data["frames"][0]
+            config[celebration_type] = {
+                "image_path": preview_path,
+                "animation_path": animation_path,
+                "is_animated": gif_data["is_animated"],
+                "frame_count": gif_data["frame_count"],
+                "total_duration_ms": gif_data.get("total_duration", sum(gif_data["durations"])),
+                "uploaded_at": datetime.now().isoformat(),
+                "original_filename": file.filename,
+                "dimensions": f"{first_frame.width}x{first_frame.height}"
             }
-        }
+            
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=2)
+            
+            return {
+                "status": "success",
+                "message": f"{'Animated GIF' if gif_data['is_animated'] else 'Static image'} uploaded and processed for {celebration_type}",
+                "celebration_type": celebration_type,
+                "file_type": "animated_gif" if gif_data["is_animated"] else "static_image",
+                "is_animated": gif_data["is_animated"],
+                "frame_count": gif_data["frame_count"],
+                "total_duration": f"{gif_data.get('total_duration', 0)}ms",
+                "dimensions": f"{first_frame.width}x{first_frame.height}",
+                "preview_path": preview_path,
+                "animation_path": animation_path if gif_data["is_animated"] else None,
+                "recommendations": {
+                    "optimal_dimensions": "64x64 pixels or smaller",
+                    "best_gif_types": ["Simple animations", "2-10 frames", "High contrast", "Bold colors"],
+                    "avoid": ["Complex animations", "Too many frames (>20)", "Very fast animations (<50ms per frame)"]
+                }
+            }
+        
+        else:
+            # Process static image for LED display
+            processed_image = process_image_for_lights(image_content)
+            
+            # Generate filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{celebration_type}_{timestamp}.png"
+            
+            # Determine directory based on type
+            if celebration_type.startswith("payment"):
+                directory = "static/images/payment"
+            else:
+                directory = "static/images/youtube"
+            
+            file_path = os.path.join(directory, filename)
+            
+            # Save processed image
+            processed_image.save(file_path, "PNG", optimize=True)
+            
+            # Convert to color grid for LED display
+            color_grid = image_to_color_grid(processed_image)
+            
+            # Save color grid as JSON for fast loading
+            grid_path = file_path.replace('.png', '_grid.json')
+            with open(grid_path, 'w') as f:
+                json.dump(color_grid, f)
+            
+            # Update configuration to use this image
+            config_path = "static/images/config.json"
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+            else:
+                config = {}
+            
+            config[celebration_type] = {
+                "image_path": file_path,
+                "grid_path": grid_path,
+                "is_animated": False,
+                "uploaded_at": datetime.now().isoformat(),
+                "original_filename": file.filename,
+                "dimensions": f"{processed_image.width}x{processed_image.height}"
+            }
+            
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=2)
+            
+            return {
+                "status": "success",
+                "message": f"Static image uploaded and processed for {celebration_type}",
+                "celebration_type": celebration_type,
+                "file_type": "static_image",
+                "is_animated": False,
+                "file_path": file_path,
+                "dimensions": f"{processed_image.width}x{processed_image.height}",
+                "grid_size": f"{len(color_grid)}x{len(color_grid[0]) if color_grid else 0}",
+                "recommendations": {
+                    "led_optimized": "Automatically resized to 14×20 pixels for Govee H70B1 (280 LEDs)",
+                    "best_image_types": ["High contrast images", "Bold colors", "Simple designs", "Logos or icons"],
+                    "avoid": ["Fine details", "Complex gradients", "Low contrast images", "Very small text"]
+                }
+            }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing upload: {str(e)}")
@@ -328,6 +488,59 @@ async def delete_celebration_image(celebration_type: str):
         json.dump(config, f, indent=2)
     
     return {"status": "success", "message": f"Deleted image for {celebration_type}"}
+
+@app.get("/images/preview/{celebration_type}")
+async def get_image_preview(celebration_type: str):
+    """Get both original and 14×20 LED preview of uploaded image"""
+    try:
+        config_file = "static/images/config.json"
+        if not os.path.exists(config_file):
+            raise HTTPException(status_code=404, detail="No images found")
+            
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+            
+        if celebration_type not in config:
+            raise HTTPException(status_code=404, detail=f"No image found for {celebration_type}")
+        
+        image_info = config[celebration_type]
+        image_path = image_info["image_path"]
+        
+        if not os.path.exists(image_path):
+            raise HTTPException(status_code=404, detail="Image file not found")
+        
+        # Open and process the image
+        with Image.open(image_path) as img:
+            # Create 14×20 LED preview (scaled up for visibility)
+            led_preview = img.resize((14, 20), Image.Resampling.NEAREST)
+            
+            # Scale up the 14×20 preview to 280×400 (20x scale) for visibility
+            led_preview_large = led_preview.resize((280, 400), Image.Resampling.NEAREST)
+            
+            # Convert to base64 for web display
+            import io
+            import base64
+            
+            # Original image
+            original_buffer = io.BytesIO()
+            img.save(original_buffer, format='PNG')
+            original_b64 = base64.b64encode(original_buffer.getvalue()).decode()
+            
+            # LED preview
+            led_buffer = io.BytesIO()
+            led_preview_large.save(led_buffer, format='PNG')
+            led_b64 = base64.b64encode(led_buffer.getvalue()).decode()
+            
+            return {
+                "celebration_type": celebration_type,
+                "original_image": f"data:image/png;base64,{original_b64}",
+                "led_preview": f"data:image/png;base64,{led_b64}",
+                "led_dimensions": "14×20 pixels (for Govee H70B1)",
+                "info": image_info
+            }
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating preview: {str(e)}")
 
 # Authentication endpoints
 @app.post("/auth/register")
@@ -775,6 +988,200 @@ async def health_check():
     """Health check endpoint for Render"""
     return {"status": "healthy", "service": "curtain-lights-api", "timestamp": datetime.now().isoformat()}
 
+@app.get("/status/comprehensive")
+async def comprehensive_status_check():
+    """Comprehensive status check for all services and configurations"""
+    status = {
+        "timestamp": datetime.now().isoformat(),
+        "overall_status": "unknown",
+        "services": {}
+    }
+    
+    issues = []
+    successes = []
+    
+    try:
+        # 1. Govee API Status
+        govee_status = {
+            "name": "Govee Lights API",
+            "status": "unknown",
+            "details": {}
+        }
+        
+        govee_api_key = os.getenv("GOVEE_API_KEY")
+        govee_device_id = os.getenv("GOVEE_DEVICE_ID") 
+        govee_model = os.getenv("GOVEE_MODEL")
+        
+        if not govee_api_key:
+            govee_status["status"] = "error"
+            govee_status["details"]["error"] = "GOVEE_API_KEY not configured"
+            issues.append("Govee API key missing")
+        elif not govee_device_id:
+            govee_status["status"] = "error"
+            govee_status["details"]["error"] = "GOVEE_DEVICE_ID not configured"
+            issues.append("Govee device ID missing")
+        elif not govee_model:
+            govee_status["status"] = "error"
+            govee_status["details"]["error"] = "GOVEE_MODEL not configured"
+            issues.append("Govee model missing")
+        else:
+            # Test actual device connection
+            try:
+                from .govee import test_device_connection
+                device_test = await test_device_connection("state", None)
+                if device_test:
+                    govee_status["status"] = "healthy"
+                    govee_status["details"]["api_key"] = f"***{govee_api_key[-4:]}"
+                    govee_status["details"]["device_id"] = govee_device_id
+                    govee_status["details"]["model"] = govee_model
+                    govee_status["details"]["connection"] = "successful"
+                    successes.append("Govee lights connected")
+                else:
+                    govee_status["status"] = "warning"
+                    govee_status["details"]["error"] = "Device connection failed"
+                    issues.append("Govee device not responding")
+            except Exception as e:
+                govee_status["status"] = "warning"
+                govee_status["details"]["error"] = f"Connection test failed: {str(e)}"
+                issues.append("Govee connection test failed")
+        
+        status["services"]["govee"] = govee_status
+        
+        # 2. Stripe Configuration
+        stripe_status = {
+            "name": "Stripe Payment Processing",
+            "status": "unknown",
+            "details": {}
+        }
+        
+        stripe_sk = os.getenv("STRIPE_SK")
+        stripe_webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+        
+        if not stripe_sk:
+            stripe_status["status"] = "error"
+            stripe_status["details"]["error"] = "STRIPE_SK not configured"
+            issues.append("Stripe secret key missing")
+        elif not stripe_webhook_secret:
+            stripe_status["status"] = "warning"
+            stripe_status["details"]["error"] = "STRIPE_WEBHOOK_SECRET not configured"
+            issues.append("Stripe webhook secret missing")
+        else:
+            stripe_status["status"] = "healthy"
+            stripe_status["details"]["secret_key"] = f"***{stripe_sk[-4:]}"
+            stripe_status["details"]["webhook_configured"] = bool(stripe_webhook_secret)
+            successes.append("Stripe configured")
+        
+        status["services"]["stripe"] = stripe_status
+        
+        # 3. YouTube API Configuration
+        youtube_status = {
+            "name": "YouTube Monitoring",
+            "status": "unknown",
+            "details": {}
+        }
+        
+        yt_api_key = os.getenv("YT_API_KEY")
+        youtube_channel_id = os.getenv("YOUTUBE_CHANNEL_ID")
+        
+        if not yt_api_key:
+            youtube_status["status"] = "error"
+            youtube_status["details"]["error"] = "YT_API_KEY not configured"
+            issues.append("YouTube API key missing")
+        elif not youtube_channel_id:
+            youtube_status["status"] = "warning"
+            youtube_status["details"]["error"] = "YOUTUBE_CHANNEL_ID not configured"
+            issues.append("YouTube channel ID missing")
+        else:
+            # Test YouTube API
+            try:
+                from .youtube import youtube_monitor
+                test_stats = await youtube_monitor.get_channel_stats(youtube_channel_id)
+                if "error" not in test_stats:
+                    youtube_status["status"] = "healthy"
+                    youtube_status["details"]["api_key"] = f"***{yt_api_key[-4:]}"
+                    youtube_status["details"]["channel_id"] = youtube_channel_id
+                    youtube_status["details"]["subscriber_count"] = test_stats.get("subscriber_count", "unknown")
+                    youtube_status["details"]["monitoring_active"] = youtube_monitor.monitoring_active
+                    successes.append("YouTube API connected")
+                else:
+                    youtube_status["status"] = "error"
+                    youtube_status["details"]["error"] = test_stats["error"]
+                    issues.append("YouTube API test failed")
+            except Exception as e:
+                youtube_status["status"] = "error"
+                youtube_status["details"]["error"] = f"API test failed: {str(e)}"
+                issues.append("YouTube API connection failed")
+        
+        status["services"]["youtube"] = youtube_status
+        
+        # 4. Image Storage
+        image_status = {
+            "name": "Image Storage",
+            "status": "unknown",
+            "details": {}
+        }
+        
+        try:
+            # Check if directories exist
+            payment_dir = "static/images/payment"
+            youtube_dir = "static/images/youtube"
+            config_file = "static/images/config.json"
+            
+            os.makedirs(payment_dir, exist_ok=True)
+            os.makedirs(youtube_dir, exist_ok=True)
+            
+            # Count uploaded images
+            image_count = 0
+            if os.path.exists(config_file):
+                with open(config_file, 'r') as f:
+                    config = json.load(f)
+                    image_count = len(config)
+            
+            image_status["status"] = "healthy"
+            image_status["details"]["payment_directory"] = payment_dir
+            image_status["details"]["youtube_directory"] = youtube_dir
+            image_status["details"]["uploaded_images"] = image_count
+            successes.append(f"Image storage ready ({image_count} images)")
+            
+        except Exception as e:
+            image_status["status"] = "error"
+            image_status["details"]["error"] = f"Storage setup failed: {str(e)}"
+            issues.append("Image storage not accessible")
+        
+        status["services"]["image_storage"] = image_status
+        
+        # 5. Overall Status
+        if not issues:
+            status["overall_status"] = "healthy"
+            status["message"] = "All systems operational!"
+        elif len(issues) <= len(successes):
+            status["overall_status"] = "warning"
+            status["message"] = f"{len(successes)} services healthy, {len(issues)} issues detected"
+        else:
+            status["overall_status"] = "error"
+            status["message"] = f"Multiple critical issues detected"
+        
+        status["summary"] = {
+            "successes": successes,
+            "issues": issues,
+            "total_services": len(status["services"])
+        }
+        
+        return status
+        
+    except Exception as e:
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "overall_status": "error",
+            "message": f"Status check failed: {str(e)}",
+            "services": status.get("services", {}),
+            "summary": {
+                "successes": successes,
+                "issues": issues + [f"Status check error: {str(e)}"],
+                "total_services": len(status.get("services", {}))
+            }
+        }
+
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok"}
@@ -789,6 +1196,76 @@ async def debug_env():
         "google_client_id": "***" + os.getenv("GOOGLE_CLIENT_ID", "NOT_SET")[-4:] if os.getenv("GOOGLE_CLIENT_ID") else "NOT_SET",
         "stripe_client_id": "***" + os.getenv("STRIPE_CLIENT_ID", "NOT_SET")[-4:] if os.getenv("STRIPE_CLIENT_ID") else "NOT_SET"
     }
+
+@app.post("/test/animated-celebration")
+async def test_animated_celebration(celebration_type: str = "payment_standard"):
+    """Test animated celebration for a specific type"""
+    try:
+        from .govee import play_animated_celebration, display_color_grid, test_device_connection
+        
+        # Load image configuration
+        config_path = "static/images/config.json"
+        if not os.path.exists(config_path):
+            raise HTTPException(status_code=404, detail="No celebration images configured")
+        
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+        
+        if celebration_type not in config:
+            raise HTTPException(status_code=404, detail=f"No image configured for {celebration_type}")
+        
+        celebration_config = config[celebration_type]
+        
+        if celebration_config.get("is_animated", False):
+            # Play animated celebration
+            animation_path = celebration_config.get("animation_path")
+            if not animation_path:
+                raise HTTPException(status_code=400, detail="Animation path not found")
+            
+            success = await play_animated_celebration(animation_path, repeat_count=1)
+            
+            if success:
+                return {
+                    "status": "success",
+                    "message": f"Animated celebration played for {celebration_type}",
+                    "celebration_type": celebration_type,
+                    "file_type": "animated_gif",
+                    "frame_count": celebration_config.get("frame_count", 0),
+                    "duration": f"{celebration_config.get('total_duration_ms', 0)}ms"
+                }
+            else:
+                raise HTTPException(status_code=500, detail="Failed to play animated celebration")
+        
+        else:
+            # Play static image celebration
+            grid_path = celebration_config.get("grid_path")
+            if grid_path and os.path.exists(grid_path):
+                with open(grid_path, 'r') as f:
+                    color_grid = json.load(f)
+                
+                success = await display_color_grid(color_grid)
+                await asyncio.sleep(3)  # Display for 3 seconds
+                
+                # Turn off lights
+                await test_device_connection("turn", "off")
+                
+                if success:
+                    return {
+                        "status": "success",
+                        "message": f"Static image celebration played for {celebration_type}",
+                        "celebration_type": celebration_type,
+                        "file_type": "static_image",
+                        "duration": "3000ms"
+                    }
+                else:
+                    raise HTTPException(status_code=500, detail="Failed to display static celebration")
+            else:
+                raise HTTPException(status_code=404, detail="Color grid file not found")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error testing animated celebration: {str(e)}")
 
 # Serve frontend static files (for production)
 if os.path.exists("frontend/dist"):
