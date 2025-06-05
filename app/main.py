@@ -60,12 +60,13 @@ async def startup_event():
     if youtube_channel_id:
         print(f"🎬 Starting automatic YouTube monitoring for channel: {youtube_channel_id}")
         
-        # Initialize the monitor
-        await youtube_monitor.start_monitoring(youtube_channel_id, check_interval=300)  # Check every 5 minutes
+        # Initialize the monitor with quota-optimized interval
+        await youtube_monitor.start_monitoring(youtube_channel_id, check_interval=1800)  # Check every 30 minutes
         
         # Start the background monitoring task
         youtube_monitoring_task = asyncio.create_task(check_subscriber_milestones_task())
         print("✅ YouTube monitoring started successfully!")
+        print("💡 Quota-optimized: ~48 API calls/day (30-minute intervals)")
     else:
         print("⚠️ No YOUTUBE_CHANNEL_ID found in environment variables")
 
@@ -596,10 +597,7 @@ async def test_light(request: TestLightRequest, current_user: Dict[str, Any] = D
 # 🎉 Payment Interrupt Endpoints
 
 @app.post("/test/payment")
-async def test_payment_celebration(
-    amount: float = 25.0, 
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
+async def test_payment_celebration(amount: float = 25.0):
     """Test payment celebration manually - simulates receiving a payment"""
     try:
         result = await payment_interrupt_manager.trigger_payment_celebration(amount, "test")
@@ -612,7 +610,7 @@ async def test_payment_celebration(
         raise HTTPException(status_code=500, detail=f"Error triggering celebration: {str(e)}")
 
 @app.get("/payment/interrupt/status")
-async def get_interrupt_status(current_user: Dict[str, Any] = Depends(get_current_user)):
+async def get_interrupt_status():
     """Get current payment interrupt status"""
     interrupt = payment_interrupt_manager.get_current_interrupt()
     return {
@@ -621,7 +619,7 @@ async def get_interrupt_status(current_user: Dict[str, Any] = Depends(get_curren
     }
 
 @app.post("/payment/interrupt/stop")
-async def stop_interrupt(current_user: Dict[str, Any] = Depends(get_current_user)):
+async def stop_interrupt():
     """Manually stop current payment interrupt"""
     result = await payment_interrupt_manager.stop_current_interrupt()
     return result
@@ -695,10 +693,7 @@ async def check_subscriber_milestone(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/test/subscriber-milestone")
-async def test_subscriber_milestone(
-    milestone: int = 1000,
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
+async def test_subscriber_milestone(milestone: int = 1000):
     """Test subscriber milestone celebration"""
     try:
         # Map milestone to celebration amount like the YouTube monitor does
@@ -750,8 +745,7 @@ async def check_new_youtube_subscribers(
 
 @app.post("/test/red-youtube")
 async def test_red_youtube_celebration(
-    new_subscribers: int = 1,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    new_subscribers: int = 1
 ):
     """Test red YouTube subscriber celebration"""
     try:

@@ -172,8 +172,8 @@ class YouTubeMonitor:
         
         return result
 
-    async def start_monitoring(self, channel_id: str, check_interval: int = 300) -> Dict:
-        """Start monitoring channel for subscriber milestones"""
+    async def start_monitoring(self, channel_id: str, check_interval: int = 1800) -> Dict:
+        """Start monitoring channel for subscriber milestones (optimized for quota)"""
         self.channel_id = channel_id
         self.monitoring_active = True
         
@@ -184,13 +184,17 @@ class YouTubeMonitor:
         
         self.last_subscriber_count = initial_stats["subscriber_count"]
         
-        logger.info(f"Started monitoring channel {channel_id} with {self.last_subscriber_count} subscribers")
+        logger.info(f"🎬 YouTube monitoring started: Channel {channel_id}")
+        logger.info(f"📊 Initial subscribers: {self.last_subscriber_count}")
+        logger.info(f"⏰ Check interval: {check_interval} seconds ({check_interval//60} minutes)")
+        logger.info(f"📈 Daily quota usage: ~{(24*60*60//check_interval)} API calls/day")
         
         return {
             "status": "monitoring_started",
             "channel_id": channel_id,
             "initial_subscriber_count": self.last_subscriber_count,
-            "check_interval_seconds": check_interval
+            "check_interval_seconds": check_interval,
+            "quota_estimate": f"~{(24*60*60//check_interval)} API calls/day"
         }
 
     def stop_monitoring(self) -> Dict:
@@ -215,22 +219,77 @@ youtube_monitor = YouTubeMonitor()
 
 # Async function for periodic checking (to be called by background task)
 async def check_subscriber_milestones_task():
-    """Background task to check for subscriber milestones"""
-    if not youtube_monitor.monitoring_active or not youtube_monitor.channel_id:
-        return None
+    """
+    Background task to check for subscriber milestones
+    Optimized for YouTube API quota conservation:
+    - 30-minute intervals = ~48 API calls/day
+    - Only checks subscriberCount, not full subscriptions.list
+    - Stores count locally to detect changes
+    """
+    logger.info("🚀 YouTube background monitoring task started")
     
-    milestone_check = await youtube_monitor.check_subscriber_milestone(youtube_monitor.channel_id)
-    
-    if milestone_check.get("should_celebrate"):
-        logger.info(f"🎉 Milestone reached! {milestone_check['milestone_reached']} subscribers!")
-        # This would trigger the payment interrupt system
-        return {
-            "milestone": milestone_check["milestone_reached"],
-            "celebration_amount": milestone_check["celebration_amount"],
-            "type": "subscriber_milestone"
-        }
-    
-    return None
+    while True:
+        try:
+            if not youtube_monitor.monitoring_active or not youtube_monitor.channel_id:
+                logger.info("⏸️ YouTube monitoring paused")
+                await asyncio.sleep(60)  # Check again in 1 minute
+                continue
+            
+            logger.info(f"🔍 Checking YouTube subscriber count for channel: {youtube_monitor.channel_id}")
+            
+            # Check for new subscribers (red light celebrations)
+            subscriber_check = await youtube_monitor.check_for_new_subscribers(youtube_monitor.channel_id)
+            
+            if "error" in subscriber_check:
+                logger.error(f"❌ YouTube API error: {subscriber_check['error']}")
+                await asyncio.sleep(300)  # Retry in 5 minutes on error
+                continue
+                
+            # Check for new subscribers
+            if subscriber_check.get("has_new_subscribers"):
+                new_count = subscriber_check["new_subscribers"]
+                logger.info(f"🔴 NEW SUBSCRIBERS DETECTED: {new_count} new subscribers!")
+                
+                # Import here to avoid circular imports
+                from .govee import red_youtube_celebration
+                
+                # Trigger red celebration for each new subscriber (max 5)
+                celebrations = min(new_count, 5)
+                for i in range(celebrations):
+                    await red_youtube_celebration(duration=3)
+                    if i < celebrations - 1:
+                        await asyncio.sleep(1)
+                
+                logger.info(f"🔴 Triggered {celebrations} red celebrations!")
+            
+            # Check for milestones
+            milestone_check = await youtube_monitor.check_subscriber_milestone(youtube_monitor.channel_id)
+            
+            if milestone_check.get("should_celebrate"):
+                milestone = milestone_check['milestone_reached']
+                amount = milestone_check['celebration_amount']
+                logger.info(f"🎉 MILESTONE REACHED: {milestone} subscribers! (${amount} celebration)")
+                
+                # Import here to avoid circular imports
+                from .payment_interrupts import payment_interrupt_manager
+                
+                # Trigger milestone celebration
+                await payment_interrupt_manager.trigger_payment_celebration(
+                    amount=amount,
+                    payment_type=f"milestone_{milestone}"
+                )
+                
+                logger.info(f"🎊 Triggered milestone celebration for {milestone} subscribers!")
+            
+            current_count = subscriber_check.get("current_subscribers", 0)
+            logger.info(f"📊 Current subscriber count: {current_count}")
+            
+            # Wait for the configured interval (default 30 minutes)
+            await asyncio.sleep(1800)  # 30 minutes = 1800 seconds
+            
+        except Exception as e:
+            logger.error(f"❌ Error in YouTube monitoring task: {str(e)}")
+            await asyncio.sleep(300)  # Wait 5 minutes before retrying on error
 
 async def check_new_subscriber() -> Optional[str]:
     """
