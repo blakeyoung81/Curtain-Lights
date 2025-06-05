@@ -117,29 +117,39 @@ function TestButton({
 
   const handleTest = async () => {
     setIsLoading(true)
+    // Clear previous toasts for this button to avoid clutter if user clicks multiple times
+    toast.dismiss(title) // Use a unique ID, like the title, if you want to dismiss specific toasts
+
     try {
-      // For now, simulate success since production auth isn't updated yet
-      console.log(`Testing ${endpoint}...`)
+      console.log(`Attempting to trigger endpoint: ${API_BASE}${endpoint} for test: ${title}`);
+      const response = await axios.post(`${API_BASE}${endpoint}`); // Direct API call
       
-      // Try the actual API call, but don't fail if it's a 403 (auth issue)
-      try {
-        const response = await axios.post(`${API_BASE}${endpoint}`)
-        toast.success(`${title} triggered! 🎉 Your lights should flash now!`)
-        console.log('Test response:', response.data)
-      } catch (apiError: any) {
-        if (apiError.response?.status === 403 || apiError.response?.status === 401) {
-          // Auth issue - the endpoint exists but needs auth that production doesn't have yet
-          toast.success(`${title} simulated! 🎉 (Production auth pending)`)
-          console.log('Simulated test due to auth:', endpoint)
-        } else {
-          throw apiError // Re-throw other errors
-        }
+      toast.success(`${title} triggered! 🎉 Your lights should flash now!`, { id: title });
+      console.log(`Test API Success Response for ${title}:`, response.data);
+
+    } catch (error: any) {
+      console.error(`Test API Error for ${title}:`, error);
+      let errorMessage = `Test for ${title} failed. See browser console for details.`;
+
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error('Error data:', error.response.data);
+        console.error('Error status:', error.response.status);
+        console.error('Error headers:', error.response.headers);
+        errorMessage = `Test for ${title} failed: Server responded with ${error.response.status}. ${error.response.data?.detail || ''}`;
+      } else if (error.request) {
+        // The request was made but no response was received
+        console.error('Error request:', error.request);
+        errorMessage = `Test for ${title} failed: No response from server. Check Vite proxy and network.`;
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        console.error('Error message:', error.message);
+        errorMessage = `Test for ${title} failed: ${error.message}`;
       }
-    } catch (error) {
-      toast.error(`Test failed: ${error}`)
-      console.error('Test error:', error)
+      toast.error(errorMessage, { id: title });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
   }
 
