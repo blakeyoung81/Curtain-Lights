@@ -1,0 +1,14 @@
+name: minute-cron
+
+on:
+  schedule:
+    - cron: '* * * * *'  # Run every minute
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  curl:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call cron endpoint
+        run: |
+          curl -s "https://${{ secrets.FLY_APP_NAME }}.fly.dev/cron" || echo "Cron call failed, but continuing..." 

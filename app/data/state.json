@@ -1,0 +1,13 @@
+{
+  "last_sub_id": "",
+  "scenes": {
+    "stripe": 2,
+    "calendar": 3,
+    "youtube": 1
+  },
+  "selected_device": {
+    "device_id": "1A:67:F3:96:2E:A2:43:DF",
+    "model": "H70B1", 
+    "name": "Smart Curtain Lights 1"
+  }
+} 
