@@ -407,6 +407,10 @@ async def health_check():
     """Health check endpoint for Render"""
     return {"status": "healthy", "service": "curtain-lights-api", "timestamp": datetime.now().isoformat()}
 
+@app.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
+
 @app.get("/debug/env")
 async def debug_env():
     """Debug endpoint to check environment variables"""
