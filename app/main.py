@@ -1,24 +1,27 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import requests
+import httpx
+import os
 from datetime import datetime
 
-# Govee API configuration
-GOVEE_API_KEY = "846814e4-67ec-4398-ae9b-453d741b56cd"
+# --- Configuration ---
+# Load API Key from environment variable for security
+GOVEE_API_KEY = os.getenv("GOVEE_API_KEY", "846814e4-67ec-4398-ae9b-453d741b56cd")
 GOVEE_DEVICE_ID = "1A:67:F3:96:2E:A2:43:DF"
 GOVEE_MODEL = "H70B1"
 GOVEE_BASE_URL = "https://openapi.api.govee.com"
 
-# DIY Scene IDs
-DIY_SCENES = {
-    "money": 16158674,    # Money DIY scene for Stripe payments
-    "youtube": 16158613,  # YouTube DIY scene for new subscribers
-    "goal": 16160444      # Goal DIY scene for 200 subscriber milestone
+# Define our new dynamic color palettes
+# Each inner list is an [R, G, B] color
+DYNAMIC_PALETTES = {
+    "money": [[0, 128, 0], [255, 215, 0]],       # Green & Gold
+    "youtube": [[255, 0, 0], [255, 255, 255]], # Red & White
+    "goal": [[128, 0, 128], [255, 215, 0]]     # Purple & Gold
 }
 
-app = FastAPI(title="Curtain Lights", version="1.0.0")
+app = FastAPI(title="Curtain Lights Pro", version="2.0.0")
 
-# CORS middleware
+# --- Middleware ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -27,108 +30,105 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-async def trigger_diy_scene(scene_name: str):
-    """Triggers a specific DIY scene by name and leaves it on."""
-    if scene_name not in DIY_SCENES:
-        raise HTTPException(status_code=400, detail=f"Unknown DIY scene: {scene_name}")
-    
-    scene_id = DIY_SCENES[scene_name]
-    print(f"🎬 Triggering DIY scene '{scene_name}' (ID: {scene_id}) and keeping it on.")
-    
+# --- Govee API Logic ---
+async def trigger_dynamic_palette(palette_name: str):
+    """Triggers a continuously looping dynamic palette on the device."""
+    if palette_name not in DYNAMIC_PALETTES:
+        raise HTTPException(status_code=400, detail=f"Unknown palette: {palette_name}")
+
+    print(f"🎨 Triggering looping palette '{palette_name}'...")
+
     headers = {
         "Govee-API-Key": GOVEE_API_KEY,
         "Content-Type": "application/json"
     }
-    
+
+    # This is the command structure for a looping dynamic palette
     payload = {
-        "requestId": f"diy-trigger-{scene_name}-{datetime.now().isoformat()}",
+        "requestId": f"palette-{palette_name}-{datetime.now().isoformat()}",
         "payload": {
             "sku": GOVEE_MODEL,
             "device": GOVEE_DEVICE_ID,
             "capability": {
-                "type": "devices.capabilities.dynamic_scene",
-                "instance": "diyScene",
-                "value": scene_id
+                "type": "devices.capabilities.dynamic_palette",
+                "instance": "powerSwitch", # This instance seems to work for this model
+                "value": {
+                    "mode": 4, # 4 corresponds to a dynamic/cycle mode
+                    "cycle": "auto", # 'auto' should loop
+                    "palettes": DYNAMIC_PALETTES[palette_name]
+                }
             }
         }
     }
-    
-    try:
-        response = requests.post(
-            f"{GOVEE_BASE_URL}/router/api/v1/device/control",
-            headers=headers,
-            json=payload,
-            timeout=10
-        )
-        
-        if response.status_code == 200:
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{GOVEE_BASE_URL}/router/api/v1/device/control",
+                headers=headers,
+                json=payload,
+                timeout=10
+            )
+            response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+
             result = response.json()
             if result.get("code") == 200:
-                print(f"✅ DIY scene '{scene_name}' triggered successfully.")
+                print(f"✅ Palette '{palette_name}' triggered successfully.")
                 return {
                     "success": True,
-                    "scene_name": scene_name,
-                    "scene_id": scene_id,
-                    "message": f"DIY scene '{scene_name}' triggered and is now active."
+                    "palette_name": palette_name,
+                    "message": f"Looping palette '{palette_name}' is now active."
                 }
             else:
                 print(f"❌ Govee API error: {result}")
-                raise HTTPException(status_code=500, detail=f"Govee API error: {result}")
-        else:
-            print(f"❌ HTTP error {response.status_code}: {response.text}")
-            raise HTTPException(status_code=500, detail=f"HTTP error: {response.status_code}")
-            
-    except requests.RequestException as e:
-        print(f"❌ Request failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Request failed: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Govee API error: {result.get('message', 'Unknown error')}")
 
-# Test endpoints
+        except httpx.HTTPStatusError as e:
+            print(f"❌ HTTP error {e.response.status_code}: {e.response.text}")
+            raise HTTPException(status_code=e.response.status_code, detail="Error communicating with Govee API.")
+        except httpx.RequestError as e:
+            print(f"❌ Request failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to connect to Govee API: {e}")
+
+
+# --- API Endpoints ---
 @app.post("/test/payment")
 async def test_payment():
-    """Test payment celebration - triggers Money DIY scene"""
-    try:
-        result = await trigger_diy_scene("money")
-        return {
-            "status": "success", 
-            "message": "Payment celebration scene is now active.",
-            "celebration": result
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error triggering celebration: {str(e)}")
+    """Triggers the 'money' (Green & Gold) looping palette."""
+    return await trigger_dynamic_palette("money")
 
 @app.post("/test/subscriber-milestone")
 async def test_subscriber_milestone():
-    """Test subscriber milestone - triggers YouTube DIY scene"""
-    try:
-        result = await trigger_diy_scene("youtube")
-        return {
-            "status": "success",
-            "message": "Subscriber milestone scene is now active.",
-            "celebration": result,
-            "milestone": 1000
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error triggering celebration: {str(e)}")
+    """Triggers the 'youtube' (Red & White) looping palette."""
+    return await trigger_dynamic_palette("youtube")
 
 @app.post("/test/goal")
 async def test_goal():
-    """Test goal celebration - triggers Goal DIY scene for 200 subscribers"""
-    try:
-        result = await trigger_diy_scene("goal")
-        return {
-            "status": "success",
-            "message": "Goal celebration scene is now active.",
-            "celebration": result,
-            "milestone": 200
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error triggering celebration: {str(e)}")
+    """Triggers the 'goal' (Purple & Gold) looping palette."""
+    return await trigger_dynamic_palette("goal")
 
-# Health check
+@app.post("/test/off")
+async def test_off():
+    """Turns the device off."""
+    print("🔌 Turning device off...")
+    headers = {"Govee-API-Key": GOVEE_API_KEY, "Content-Type": "application/json"}
+    payload = {
+        "requestId": f"off-{datetime.now().isoformat()}",
+        "payload": {
+            "sku": GOVEE_MODEL,
+            "device": GOVEE_DEVICE_ID,
+            "capability": {"type": "devices.capabilities.on_off", "instance": "powerSwitch", "value": 0}
+        }
+    }
+    async with httpx.AsyncClient() as client:
+        await client.post(f"{GOVEE_BASE_URL}/router/api/v1/device/control", headers=headers, json=payload, timeout=10)
+    return {"status": "success", "message": "Device turned off."}
+
+# --- Health Check ---
 @app.get("/")
 async def root():
-    return {"message": "Curtain Lights API - Simple DIY Scene Controller"}
+    return {"message": "Curtain Lights Pro API - Dynamic Palette Controller"}
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "scenes": list(DIY_SCENES.keys())} 
+    return {"status": "healthy", "palettes": list(DYNAMIC_PALETTES.keys())} 
