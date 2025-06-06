@@ -218,7 +218,7 @@ function App() {
           color: '#94a3b8',
           fontSize: '0.875rem'
         }}>
-          <p>Each test triggers a DIY scene for 5 seconds, then returns to previous state</p>
+          <p>Each test triggers a DIY scene, which will remain active.</p>
           <p>API: {API_BASE}</p>
         </div>
       </div>
